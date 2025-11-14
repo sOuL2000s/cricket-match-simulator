@@ -1,0 +1,204 @@
+
+**PROMPT START**
+
+---
+
+I want you to create a **fully complete single-file Dice Cricket Game website** exactly as described below.
+
+Please read everything carefully and follow every instruction with full accuracy.
+
+---
+
+# 🔥 **MAIN REQUIREMENTS**
+
+### ✔️ The entire project must be built inside **ONE SINGLE HTML FILE**
+
+No external files.
+No backend.
+No frameworks except **TailwindCSS CDN** (optional).
+All HTML, CSS, and JavaScript must be in this **one file only**.
+
+### ✔️ The game must run 100% in the **browser only**
+
+Use **localStorage** for all saving and loading of stats.
+
+### ✔️ The game must be easy to deploy on **Netlify**
+
+Meaning the file must be named `index.html` and must work instantly after upload.
+
+---
+
+# 🏏 **GAME DESCRIPTION (MUST FOLLOW EXACTLY)**
+
+Build a **Dice Cricket Game**, single-player, where:
+
+### 🎲 **Dice Mechanics**
+
+* The **batsman rolls a dice** (1–6)
+* The **bowler rolls a dice** (1–6)
+* If **both dice have the same number**, the batsman is **OUT**
+* If the numbers are **different**, the batsman scores **runs equal to batting dice number**
+
+### 🧑‍🤖 **AI / Computer**
+
+* The AI is not intelligent — everything must be **pure random dice rolls**
+* No difficulty levels
+
+### ⚔️ **Teams**
+
+* Only **two teams** exist (Team A and Team B)
+* Each team has **11 players**
+* User can **rename all players**
+* User can choose which team they play as
+
+### 🎯 **Match Format**
+
+* Single match mode
+* Two innings
+* Standard cricket rules:
+
+  * 6 balls = 1 over
+  * Track overs, wickets, balls, runs
+* User plays one inning as batsman
+* Computer plays the other inning
+
+### 🍀 **Toss**
+
+* Fully random
+* Winner decides to bat or bowl automatically
+
+---
+
+# ⚙️ **GAME FEATURES**
+
+You must implement the following:
+
+## 1️⃣ **Game Screens**
+
+* Start menu
+* Team & player name editor
+* Toss screen
+* Match screen (main game)
+* Scoreboard panel
+* Match Summary screen
+* Records & statistics screen
+
+## 2️⃣ **Scoreboard**
+
+Track for each batsman:
+
+* Runs
+* Balls faced
+* Fours
+* Sixes
+* Strike rate
+
+Track for each bowler:
+
+* Overs
+* Balls
+* Runs conceded
+* Wickets
+* Economy rate
+
+## 3️⃣ **LocalStorage**
+
+Save everything:
+
+* Completed match history
+* Player statistics
+* Best scores
+* Match summaries
+
+---
+
+# 📝 **MATCH SUMMARY (VERY IMPORTANT)**
+
+At the end of match, generate a full professional-style **Cricket Match Summary**.
+
+Must include:
+
+### 🏏 **Innings 1 Summary**
+
+* Total score (runs/wickets)
+* Top 3 batsmen
+* Top 3 bowlers
+
+### 🏏 **Innings 2 Summary**
+
+* Same as above
+
+### 🏆 **Result Line**
+
+Example:
+
+* “Team A won by 12 runs”
+* “Team B won by 3 wickets”
+
+### 🥇 **Man of the Match**
+
+Decide using:
+
+* Highest impact performance
+  (best batting or bowling)
+
+**No AI or external API needed.
+All logic must be internal.**
+
+---
+
+# 🎨 **UI & STYLING REQUIREMENTS**
+
+* Use **TailwindCSS (via CDN)** only, no images.
+* Clean, modern UI.
+* Responsive layout.
+* All graphics must be CSS-only (e.g., dice faces made with CSS).
+* Use components like:
+
+  * Cards
+  * Buttons
+  * Panels
+  * Tables
+
+---
+
+# 🤖 **GOOGLE GEMINI API (ONLY FOR OPTIONAL SUMMARY)**
+
+At the bottom of the match summary section, include *optional code* that allows generating a textual narration using Google Gemini.
+
+But:
+
+* The API key must be **hard-coded inside a JS variable**.
+* Must use **model: gemini-2.5-flash-preview-520**
+* Only used for generating a descriptive end-of-match commentary.
+* Never used for game logic.
+
+If API key is empty, skip this feature gracefully.
+
+---
+
+# 📦 **CODE QUALITY RULES**
+
+* All code must be in **one HTML file**.
+* Write **clean, extremely well-organized JavaScript**.
+* Add comments for all major logic blocks.
+* Make the file production-ready and deploy-ready.
+* No missing functionality.
+* No TODO items.
+
+---
+
+# 🚀 **FINAL DELIVERY FORMAT**
+
+Your final answer must ONLY contain:
+
+➡️ **A complete single-file HTML code block**
+(Copy–paste → save as `index.html` → ready to deploy)
+
+No explanations.
+No extra text.
+Just the full working code.
+
+---
+
+**PROMPT END**
