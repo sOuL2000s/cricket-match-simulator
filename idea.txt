@@ -1,204 +1,1337 @@
-
-**PROMPT START**
-
----
-
-I want you to create a **fully complete single-file Dice Cricket Game website** exactly as described below.
-
-Please read everything carefully and follow every instruction with full accuracy.
-
----
-
-# 🔥 **MAIN REQUIREMENTS**
-
-### ✔️ The entire project must be built inside **ONE SINGLE HTML FILE**
-
-No external files.
-No backend.
-No frameworks except **TailwindCSS CDN** (optional).
-All HTML, CSS, and JavaScript must be in this **one file only**.
-
-### ✔️ The game must run 100% in the **browser only**
-
-Use **localStorage** for all saving and loading of stats.
-
-### ✔️ The game must be easy to deploy on **Netlify**
-
-Meaning the file must be named `index.html` and must work instantly after upload.
-
----
-
-# 🏏 **GAME DESCRIPTION (MUST FOLLOW EXACTLY)**
-
-Build a **Dice Cricket Game**, single-player, where:
-
-### 🎲 **Dice Mechanics**
-
-* The **batsman rolls a dice** (1–6)
-* The **bowler rolls a dice** (1–6)
-* If **both dice have the same number**, the batsman is **OUT**
-* If the numbers are **different**, the batsman scores **runs equal to batting dice number**
-
-### 🧑‍🤖 **AI / Computer**
-
-* The AI is not intelligent — everything must be **pure random dice rolls**
-* No difficulty levels
-
-### ⚔️ **Teams**
-
-* Only **two teams** exist (Team A and Team B)
-* Each team has **11 players**
-* User can **rename all players**
-* User can choose which team they play as
-
-### 🎯 **Match Format**
-
-* Single match mode
-* Two innings
-* Standard cricket rules:
-
-  * 6 balls = 1 over
-  * Track overs, wickets, balls, runs
-* User plays one inning as batsman
-* Computer plays the other inning
-
-### 🍀 **Toss**
-
-* Fully random
-* Winner decides to bat or bowl automatically
-
----
-
-# ⚙️ **GAME FEATURES**
-
-You must implement the following:
-
-## 1️⃣ **Game Screens**
-
-* Start menu
-* Team & player name editor
-* Toss screen
-* Match screen (main game)
-* Scoreboard panel
-* Match Summary screen
-* Records & statistics screen
-
-## 2️⃣ **Scoreboard**
-
-Track for each batsman:
-
-* Runs
-* Balls faced
-* Fours
-* Sixes
-* Strike rate
-
-Track for each bowler:
-
-* Overs
-* Balls
-* Runs conceded
-* Wickets
-* Economy rate
-
-## 3️⃣ **LocalStorage**
-
-Save everything:
-
-* Completed match history
-* Player statistics
-* Best scores
-* Match summaries
-
----
-
-# 📝 **MATCH SUMMARY (VERY IMPORTANT)**
-
-At the end of match, generate a full professional-style **Cricket Match Summary**.
-
-Must include:
-
-### 🏏 **Innings 1 Summary**
-
-* Total score (runs/wickets)
-* Top 3 batsmen
-* Top 3 bowlers
-
-### 🏏 **Innings 2 Summary**
-
-* Same as above
-
-### 🏆 **Result Line**
-
-Example:
-
-* “Team A won by 12 runs”
-* “Team B won by 3 wickets”
-
-### 🥇 **Man of the Match**
-
-Decide using:
-
-* Highest impact performance
-  (best batting or bowling)
-
-**No AI or external API needed.
-All logic must be internal.**
-
----
-
-# 🎨 **UI & STYLING REQUIREMENTS**
-
-* Use **TailwindCSS (via CDN)** only, no images.
-* Clean, modern UI.
-* Responsive layout.
-* All graphics must be CSS-only (e.g., dice faces made with CSS).
-* Use components like:
-
-  * Cards
-  * Buttons
-  * Panels
-  * Tables
-
----
-
-# 🤖 **GOOGLE GEMINI API (ONLY FOR OPTIONAL SUMMARY)**
-
-At the bottom of the match summary section, include *optional code* that allows generating a textual narration using Google Gemini.
-
-But:
-
-* The API key must be **hard-coded inside a JS variable**.
-* Must use **model: gemini-2.5-flash-preview-520**
-* Only used for generating a descriptive end-of-match commentary.
-* Never used for game logic.
-
-If API key is empty, skip this feature gracefully.
-
----
-
-# 📦 **CODE QUALITY RULES**
-
-* All code must be in **one HTML file**.
-* Write **clean, extremely well-organized JavaScript**.
-* Add comments for all major logic blocks.
-* Make the file production-ready and deploy-ready.
-* No missing functionality.
-* No TODO items.
-
----
-
-# 🚀 **FINAL DELIVERY FORMAT**
-
-Your final answer must ONLY contain:
-
-➡️ **A complete single-file HTML code block**
-(Copy–paste → save as `index.html` → ready to deploy)
-
-No explanations.
-No extra text.
-Just the full working code.
-
----
-
-**PROMPT END**
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dice Cricket Championship</title>
+    <!-- Load Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind for Inter font and custom colors -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'cricket-green': '#005F41',
+                        'cricket-gold': '#FFD700',
+                        'cricket-red': '#E53E3E',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom CSS for Dice Visualization */
+        .dice {
+            width: 80px;
+            height: 80px;
+            border-radius: 12px;
+            background-color: #fff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: grid;
+            grid-template-areas:
+                "a . c"
+                "e g f"
+                "d . b";
+            padding: 10px;
+            gap: 10px;
+        }
+
+        .dot {
+            display: block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background-color: #333;
+            place-self: center;
+        }
+
+        /* Dot positioning for 1-6 */
+        .dot:nth-child(1) { grid-area: a; }
+        .dot:nth-child(2) { grid-area: b; }
+        .dot:nth-child(3) { grid-area: c; }
+        .dot:nth-child(4) { grid-area: d; }
+        .dot:nth-child(5) { grid-area: e; }
+        .dot:nth-child(6) { grid-area: f; }
+        .dot:nth-child(7) { grid-area: g; } /* Center dot for 1, 3, 5 */
+
+        .dice-1 { grid-template-areas: ". . ." ". g ." ". . ."; }
+        .dice-2 { grid-template-areas: "a . ." ". . ." ". . b"; }
+        .dice-3 { grid-template-areas: "a . ." ". g ." ". . b"; }
+        .dice-4 { grid-template-areas: "a . c" ". . ." "d . b"; }
+        .dice-5 { grid-template-areas: "a . c" ". g ." "d . b"; }
+        .dice-6 { grid-template-areas: "a . c" "e . f" "d . b"; }
+
+        /* Animation for a quick roll effect */
+        .roll-animation {
+            animation: roll 0.2s ease-in-out 3;
+        }
+
+        @keyframes roll {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(0.9); opacity: 0.5; }
+        }
+
+        /* General UI enhancements */
+        .card {
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            @apply bg-cricket-green text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-green-800 transition duration-150 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-opacity-50;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen font-sans flex flex-col">
+
+    <header class="bg-cricket-green text-white shadow-xl p-4 md:p-6 sticky top-0 z-10">
+        <h1 class="text-3xl font-bold text-center">Dice Cricket Championship</h1>
+    </header>
+
+    <main id="app" class="flex-grow container mx-auto p-4 md:p-8">
+        <!-- Content will be rendered here by JavaScript -->
+    </main>
+
+    <footer class="bg-gray-200 p-4 text-center text-gray-600 text-sm mt-8">
+        &copy; 2025 Dice Cricket Game. All rights reserved. Built with pure HTML/JS/Tailwind.
+    </footer>
+
+    <script>
+        // --- CONSTANTS AND CONFIGURATION ---
+        const API_KEY = "AIzaSyCzx6ReMk8ohPJcCjGwHHzu7SvFccJqAbA"; // PASTE YOUR GEMINI API KEY HERE
+        const GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"; // Use the latest supported model
+        const OVERS_OPTIONS = [5, 10, 20, 50]; // Available match lengths
+        const LOCAL_STORAGE_KEY = 'diceCricketState';
+        const LOCAL_STORAGE_RECORDS_KEY = 'diceCricketRecords';
+
+        // --- GLOBAL STATE ---
+        let gameState = {};
+        let globalRecords = {
+            matchHistory: [],
+            playerStats: {},
+            bestBatting: null, // { runs, playerName, teamName }
+            bestBowling: null, // { wickets, runs, playerName, teamName }
+        };
+
+        // Default player names for 11 players
+        const DEFAULT_PLAYERS = [
+            "Batter 1", "Batter 2", "All Rounder 3", "All Rounder 4",
+            "Wicket Keeper 5", "Bowler 6", "Bowler 7", "Bowler 8",
+            "Bowler 9", "Bowler 10", "Bowler 11"
+        ];
+
+        // Player initial stat structure
+        const getNewPlayerStats = (name) => ({
+            name: name,
+            // Batting Stats
+            R: 0, // Runs
+            B: 0, // Balls Faced
+            Fours: 0,
+            Sixes: 0,
+            SR: 0.0, // Strike Rate
+            out: false,
+            // Bowling Stats (only relevant for computer team bowling)
+            O: 0, // Overs
+            Balls: 0, // Balls in current over
+            W: 0, // Wickets
+            Runs: 0, // Runs conceded
+            Econ: 0.0 // Economy Rate
+        });
+
+        // Initial Game State Factory
+        const getInitialGameState = () => ({
+            currentScreen: 'start',
+            isMatchActive: false,
+            isUserBatting: null, // true/false - set after toss
+            userTeamId: 'A',
+            compTeamId: 'B',
+            tossWinner: null, // 'user' | 'comp'
+            tossDecision: null, // 'bat' | 'bowl' (only set if user wins, or comp wins and makes choice)
+            target: 0,
+            innings: 1, // 1 or 2
+            matchResult: null,
+            summary: null,
+            selectedOvers: OVERS_OPTIONS[0], // Default to first option
+
+            // Match score tracking
+            score: {
+                batting: {
+                    runs: 0, wickets: 0, overs: 0, balls: 0,
+                    onStrikePlayerIndex: 0, // Index of the batsman currently on strike
+                    offStrikePlayerIndex: 1, // Index of the batsman at the non-striker's end
+                    nextPlayerIndex: 2 // Index of the next player to bat
+                },
+                bowling: {
+                    overs: 0, balls: 0, wickets: 0, runsConceded: 0,
+                    currentBowlerIndex: 5 // Start with player 6 (index 5) as bowler
+                },
+            },
+            teams: {
+                'A': {
+                    name: 'Team A',
+                    players: DEFAULT_PLAYERS.map(getNewPlayerStats),
+                    battingScorecard: [], // A snapshot of player stats who have batted in current innings
+                    inningsScore: null // { runs, wickets, overs, balls } for a completed innings
+                },
+                'B': {
+                    name: 'Team B',
+                    players: DEFAULT_PLAYERS.map(getNewPlayerStats),
+                    battingScorecard: [],
+                    inningsScore: null
+                }
+            }
+        });
+
+        // --- DICE HELPER FUNCTIONS ---
+
+        /** Generates a random number between 1 and 6. */
+        const rollDice = () => Math.floor(Math.random() * 6) + 1;
+
+        /** Generates the HTML string for a dice face. */
+        const getDiceHtml = (value) => {
+            const dots = Array(value).fill(0).map((_, i) => `<span class="dot" data-dot-index="${i + 1}"></span>`).join('');
+            const diceHtml = `
+                <div id="dice-visual" class="dice dice-${value} bg-gray-200 transition-all duration-300">
+                    ${dots}
+                </div>
+            `;
+            return diceHtml;
+        };
+
+        // --- LOCAL STORAGE FUNCTIONS ---
+
+        /** Loads the game state and global records from localStorage. */
+        const loadState = () => {
+            try {
+                const stateJson = localStorage.getItem(LOCAL_STORAGE_KEY);
+                const recordsJson = localStorage.getItem(LOCAL_STORAGE_RECORDS_KEY);
+
+                if (stateJson) {
+                    const loadedState = JSON.parse(stateJson);
+                    // Merge with default state to ensure all new properties exist
+                    const defaultState = getInitialGameState();
+                    gameState = { ...defaultState, ...loadedState };
+
+                    // Ensure player arrays are properly structured, especially if loaded from an older save
+                    ['A', 'B'].forEach(teamId => {
+                        if (gameState.teams[teamId] && Array.isArray(gameState.teams[teamId].players)) {
+                            gameState.teams[teamId].players = gameState.teams[teamId].players.map((p, idx) =>
+                                getNewPlayerStats(p ? p.name || DEFAULT_PLAYERS[idx] : DEFAULT_PLAYERS[idx])
+                            );
+                        } else {
+                            gameState.teams[teamId].players = DEFAULT_PLAYERS.map(getNewPlayerStats);
+                        }
+                    });
+                } else {
+                    gameState = getInitialGameState();
+                }
+
+                if (recordsJson) {
+                    globalRecords = JSON.parse(recordsJson);
+                }
+            } catch (e) {
+                console.error("Error loading state from localStorage:", e);
+                gameState = getInitialGameState(); // Fallback to initial state
+            }
+        };
+
+        /** Saves the current game state to localStorage. */
+        const saveState = () => {
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(gameState));
+                localStorage.setItem(LOCAL_STORAGE_RECORDS_KEY, JSON.stringify(globalRecords));
+            } catch (e) {
+                console.error("Error saving state to localStorage:", e);
+            }
+        };
+
+        /** Resets the match state only, keeping team names and records. */
+        const resetMatchState = () => {
+            const teamA_name = gameState.teams['A'].name;
+            const teamB_name = gameState.teams['B'].name;
+            const userTeamId = gameState.userTeamId;
+            const compTeamId = gameState.compTeamId;
+            const selectedOvers = gameState.selectedOvers; // Preserve selected overs
+
+            // Re-initialize game state structure
+            gameState = getInitialGameState();
+
+            // Restore persistent settings
+            gameState.userTeamId = userTeamId;
+            gameState.compTeamId = compTeamId;
+            gameState.teams['A'].name = teamA_name;
+            gameState.teams['B'].name = teamB_name;
+            gameState.selectedOvers = selectedOvers;
+
+
+            // Reset player stats for new match but keep their names
+            gameState.teams['A'].players = DEFAULT_PLAYERS.map((_, idx) => getNewPlayerStats(teamA_name === 'Team A' ? DEFAULT_PLAYERS[idx] : gameState.teams['A'].players[idx].name));
+            gameState.teams['B'].players = DEFAULT_PLAYERS.map((_, idx) => getNewPlayerStats(teamB_name === 'Team B' ? DEFAULT_PLAYERS[idx] : gameState.teams['B'].players[idx].name));
+
+            gameState.teams['A'].battingScorecard = [];
+            gameState.teams['B'].battingScorecard = [];
+            gameState.teams['A'].inningsScore = null;
+            gameState.teams['B'].inningsScore = null;
+
+            saveState();
+            navigateTo('start');
+        };
+
+        // --- NAVIGATION AND SCREEN RENDERING ---
+
+        /** Navigates to a new screen and saves state. */
+        const navigateTo = (screenId) => {
+            gameState.currentScreen = screenId;
+            saveState();
+            renderScreen();
+        };
+
+        /** Main function to render the active screen. */
+        const renderScreen = () => {
+            const appDiv = document.getElementById('app');
+            if (!appDiv) return; // Guard against appDiv not being ready
+            appDiv.innerHTML = ''; // Clear previous content
+
+            switch (gameState.currentScreen) {
+                case 'start':
+                    appDiv.innerHTML = renderStartMenu();
+                    break;
+                case 'team_editor':
+                    appDiv.innerHTML = renderTeamEditor();
+                    break;
+                case 'toss':
+                    appDiv.innerHTML = renderTossScreen();
+                    break;
+                case 'match':
+                    appDiv.innerHTML = renderMatchScreen();
+                    break;
+                case 'summary':
+                    appDiv.innerHTML = renderMatchSummary();
+                    break;
+                case 'records':
+                    appDiv.innerHTML = renderRecords();
+                    break;
+                default:
+                    navigateTo('start'); // Fallback
+            }
+        };
+
+        // --- UI RENDERING FUNCTIONS ---
+
+        const renderStartMenu = () => `
+            <div class="max-w-xl mx-auto p-6 bg-white card text-center">
+                <h2 class="text-4xl font-extrabold mb-8 text-cricket-green">Welcome to Dice Cricket</h2>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-center space-x-4 mb-6">
+                        <label for="overs-select" class="text-lg font-semibold text-gray-700">Select Overs:</label>
+                        <select id="overs-select" class="p-2 border rounded-md shadow-sm focus:border-cricket-gold focus:ring focus:ring-cricket-gold focus:ring-opacity-50"
+                                onchange="updateSelectedOvers(this.value)">
+                            ${OVERS_OPTIONS.map(overs => `
+                                <option value="${overs}" ${gameState.selectedOvers == overs ? 'selected' : ''}>${overs} Overs</option>
+                            `).join('')}
+                        </select>
+                    </div>
+                    <button onclick="startNewMatch()" class="btn-primary w-full text-xl">
+                        Start New Match (${gameState.selectedOvers} Overs)
+                    </button>
+                    <button onclick="navigateTo('team_editor')" class="bg-blue-600 text-white font-bold py-3 px-6 rounded-xl w-full text-xl hover:bg-blue-700 transition">
+                        Edit Teams & Names
+                    </button>
+                    <button onclick="navigateTo('records')" class="bg-gray-600 text-white font-bold py-3 px-6 rounded-xl w-full text-xl hover:bg-gray-700 transition">
+                        View Records & Stats
+                    </button>
+                    ${gameState.matchResult ? `<div class="p-4 mt-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700">Last Match: ${gameState.matchResult}</div>` : ''}
+                </div>
+            </div>
+        `;
+
+        const renderTeamEditor = () => {
+            const teamA = gameState.teams['A'];
+            const teamB = gameState.teams['B'];
+
+            const renderTeamPanel = (teamId, team) => `
+                <div class="bg-gray-50 p-6 card">
+                    <div class="flex items-center justify-between mb-4">
+                        <input id="${teamId}-name" class="text-2xl font-bold bg-transparent border-b-2 border-cricket-green focus:border-cricket-gold focus:outline-none w-1/2" value="${team.name}" onblur="updateTeamName('${teamId}', this.value)" />
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="radio" name="userTeam" value="${teamId}" class="form-radio h-5 w-5 text-cricket-green" onchange="setUserTeam(this.value)" ${gameState.userTeamId === teamId ? 'checked' : ''}>
+                            <span class="ml-2 text-lg font-semibold">${teamId === gameState.userTeamId ? 'Your Team' : 'Play as'}</span>
+                        </label>
+                    </div>
+                    <h4 class="text-sm font-semibold text-gray-500 mb-2">Edit Player Names:</h4>
+                    <div class="space-y-2 max-h-96 overflow-y-auto pr-2">
+                        ${team.players.map((player, index) => `
+                            <div class="flex items-center">
+                                <span class="w-8 text-cricket-green font-mono">${index + 1}.</span>
+                                <input class="flex-grow p-2 border rounded-lg focus:border-cricket-gold focus:ring-1 focus:ring-cricket-gold"
+                                    type="text" value="${player.name}"
+                                    onblur="updatePlayerName('${teamId}', ${index}, this.value)"
+                                    placeholder="Player ${index + 1}">
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            return `
+                <div class="max-w-4xl mx-auto">
+                    <h2 class="text-3xl font-bold mb-6 text-center text-cricket-green">Team Roster Editor</h2>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        ${renderTeamPanel('A', teamA)}
+                        ${renderTeamPanel('B', teamB)}
+                    </div>
+                    <div class="mt-8 text-center">
+                        <button onclick="navigateTo('start')" class="btn-primary bg-cricket-red hover:bg-red-700">
+                            Save & Back to Menu
+                        </button>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderTossScreen = () => {
+            const userTeamName = gameState.teams[gameState.userTeamId].name;
+            const compTeamName = gameState.teams[gameState.compTeamId].name;
+
+            let content;
+            if (!gameState.tossWinner) {
+                content = `
+                    <h3 class="text-2xl font-semibold mb-6">It's time for the Toss!</h3>
+                    <p class="mb-8 text-lg">Roll the virtual coin to decide who bats first.</p>
+                    <button onclick="performToss()" class="btn-primary text-xl">
+                        Flip the Coin!
+                    </button>
+                `;
+            } else if (gameState.tossWinner === 'user' && !gameState.tossDecision) {
+                content = `
+                    <h3 class="text-3xl font-extrabold mb-6 text-cricket-gold">You won the Toss!</h3>
+                    <p class="text-xl mb-8">${userTeamName}, what do you choose?</p>
+                    <div class="flex justify-center space-x-4">
+                        <button onclick="userChooseBat()" class="btn-primary text-xl bg-blue-600 hover:bg-blue-700">Bat First</button>
+                        <button onclick="userChooseBowl()" class="btn-primary text-xl bg-purple-600 hover:bg-purple-700">Bowl First</button>
+                    </div>
+                `;
+            } else {
+                const winnerName = gameState.tossWinner === 'user' ? userTeamName : compTeamName;
+                const tossDecision = gameState.tossDecision;
+                const decisionText = tossDecision === 'bat' ? 'will BAT first' : 'will BOWL first';
+                const nextActionTeamName = gameState.isUserBatting ? userTeamName : compTeamName;
+
+                content = `
+                    <h3 class="text-3xl font-extrabold mb-6 text-cricket-gold">Toss Result!</h3>
+                    <p class="text-xl mb-8">${winnerName} won the toss and decided to ${tossDecision}.</p>
+                    <div class="bg-gray-100 p-4 rounded-lg shadow-inner">
+                        <p class="text-lg"><strong>Match Starting:</strong> ${nextActionTeamName} will Bat</p>
+                    </div>
+                    <button onclick="navigateTo('match')" class="btn-primary mt-8 text-xl">
+                        Start Match
+                    </button>
+                `;
+            }
+
+            return `
+                <div class="max-w-lg mx-auto p-8 bg-white card text-center">
+                    <h2 class="text-4xl font-bold mb-4 text-cricket-green">The Toss</h2>
+                    ${content}
+                </div>
+            `;
+        };
+
+        const renderMatchScreen = () => {
+            const battingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
+            const bowlingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId;
+            const battingTeam = gameState.teams[battingTeamId];
+            const bowlingTeam = gameState.teams[bowlingTeamId];
+
+            const score = gameState.score.batting;
+            // Get batsman details, with fallbacks for safety
+            const currentBatsmanOnStrike = battingTeam.players[score.onStrikePlayerIndex] || { name: 'N/A', R: 0, B: 0 };
+            const currentBatsmanOffStrike = battingTeam.players[score.offStrikePlayerIndex] || { name: 'N/A', R: 0, B: 0 };
+            const currentBowler = bowlingTeam.players[gameState.score.bowling.currentBowlerIndex] || { name: 'N/A' };
+
+            const displayOvers = `${score.overs}.${score.balls}`;
+            const targetDisplay = gameState.target > 0 ? `<span class="text-cricket-red font-semibold"> (Target: ${gameState.target})</span>` : '';
+
+            // Render Dice Container and Scoreboard dynamically
+            const diceContainer = `
+                <div class="flex flex-col md:flex-row justify-around items-center space-y-6 md:space-y-0 p-4 bg-gray-50 rounded-xl shadow-inner">
+                    <div class="text-center">
+                        <h4 class="text-lg font-semibold mb-2">Batsman's Roll</h4>
+                        <div id="batting-dice" class="dice-container flex justify-center">
+                            ${getDiceHtml(1)}
+                        </div>
+                    </div>
+                    <div class="text-center">
+                        <h4 class="text-lg font-semibold mb-2">Bowler's Roll</h4>
+                        <div id="bowling-dice" class="dice-container flex justify-center">
+                            ${getDiceHtml(1)}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            return `
+                <div class="max-w-5xl mx-auto">
+                    <h2 class="text-4xl font-extrabold mb-6 text-center text-cricket-green">
+                        Innings ${gameState.innings} - ${battingTeam.name} Batting
+                    </h2>
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                        <!-- Current Score Panel (Left/Top) -->
+                        <div class="lg:col-span-1 bg-white p-6 card">
+                            <h3 class="text-2xl font-bold mb-4 border-b pb-2 text-cricket-green">Live Score</h3>
+                            <p class="text-5xl font-extrabold mb-2">${score.runs}/${score.wickets} ${targetDisplay}</p>
+                            <p class="text-xl text-gray-600 mb-6">Overs: ${displayOvers} / ${gameState.selectedOvers}.0</p>
+
+                            <div class="space-y-3">
+                                <p class="text-lg"><strong>On Strike:</strong> ${currentBatsmanOnStrike.name} <span class="font-mono text-cricket-red">(${currentBatsmanOnStrike.R} R, ${currentBatsmanOnStrike.B} B)</span></p>
+                                <p class="text-lg"><strong>Non-Striker:</strong> ${currentBatsmanOffStrike.name} <span class="font-mono text-gray-500">(${currentBatsmanOffStrike.R} R, ${currentBatsmanOffStrike.B} B)</span></p>
+                                <p class="text-lg"><strong>Bowler:</strong> ${currentBowler.name}</p>
+                            </div>
+                            <div id="action-message" class="mt-4 p-3 bg-blue-100 text-blue-800 rounded-lg text-sm font-medium">
+                                Waiting for the next roll...
+                            </div>
+                        </div>
+
+                        <!-- Dice & Action Panel (Center) -->
+                        <div class="lg:col-span-2 bg-white p-6 card flex flex-col items-center">
+                            ${diceContainer}
+                            <button id="roll-button" onclick="handleRoll()" class="btn-primary w-full mt-6 text-2xl">
+                                ROLL THE DICE!
+                            </button>
+                        </div>
+
+                        <!-- Full Scoreboard (Bottom) -->
+                        <div class="lg:col-span-3">
+                            ${renderScoreboardTable(battingTeam)}
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderScoreboardTable = (battingTeam) => {
+            // Display players who have come to bat, up to the next player in queue
+            const players = battingTeam.players.slice(0, gameState.score.batting.nextPlayerIndex);
+            const tableRows = players.map(player => `
+                <tr class="text-gray-700 ${player.out ? 'bg-red-50' : (player.B > 0 && !player.out ? 'bg-green-50' : 'bg-gray-50')}">
+                    <td class="px-4 py-2 font-medium">${player.name} ${player.out ? '<span class="text-cricket-red font-bold">(OUT)</span>' : (player.B > 0 ? '<span class="text-cricket-green font-bold">(NOT OUT)</span>' : '')}</td>
+                    <td class="px-4 py-2 text-right">${player.R}</td>
+                    <td class="px-4 py-2 text-right">${player.B}</td>
+                    <td class="px-4 py-2 text-right">${player.Fours}</td>
+                    <td class="px-4 py-2 text-right">${player.Sixes}</td>
+                    <td class="px-4 py-2 text-right">${player.SR}</td>
+                </tr>
+            `).join('');
+
+            // Get bowling team's top bowler stats for the current innings
+            const bowlingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId;
+            const bowlers = gameState.teams[bowlingTeamId].players.filter(p => p.W > 0 || p.Runs > 0);
+            const topBowlers = bowlers.sort((a, b) => b.W - a.W || a.Runs - b.Runs).slice(0, 3); // Top 3 bowlers
+            const bowlingRows = topBowlers.map(bowler => `
+                <tr class="bg-blue-50">
+                    <td class="px-4 py-2 font-medium">${bowler.name}</td>
+                    <td class="px-4 py-2 text-right">${bowler.O}.${bowler.Balls % 6}</td>
+                    <td class="px-4 py-2 text-right">${bowler.Runs}</td>
+                    <td class="px-4 py-2 text-right">${bowler.W}</td>
+                    <td class="px-4 py-2 text-right">${bowler.Econ}</td>
+                </tr>
+            `).join('');
+
+
+            return `
+                <div class="bg-white p-6 card mt-6">
+                    <h3 class="text-xl font-bold mb-4 border-b pb-2 text-cricket-green">${battingTeam.name} Batting Scorecard</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Batsman</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Runs</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Balls</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">4s</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">6s</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">SR</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                ${tableRows || '<tr><td colspan="6" class="px-4 py-4 text-center text-gray-500">No balls bowled yet.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h3 class="text-xl font-bold mt-6 mb-4 border-b pb-2 text-cricket-green">Bowling Analysis (Current Opponent)</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bowler</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Overs</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Runs</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Wickets</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Econ</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                ${bowlingRows.length > 0 ? bowlingRows : '<tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">No bowling stats to show yet.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        };
+
+
+        // --- MATCH MANAGEMENT LOGIC ---
+
+        /** Sets up the game state for a new match. */
+        const startNewMatch = () => {
+            resetMatchState(); // Reset only match data
+            navigateTo('toss');
+        };
+
+        /** Updates the selected overs in gameState */
+        const updateSelectedOvers = (value) => {
+            gameState.selectedOvers = parseInt(value, 10);
+            saveState();
+            renderScreen(); // Re-render to update the button text
+        };
+
+        /** Performs the initial toss and sets up the first innings. */
+        const performToss = () => {
+            const winner = Math.random() < 0.5 ? 'user' : 'comp';
+
+            gameState.tossWinner = winner;
+
+            if (winner === 'comp') {
+                // Computer makes a random decision
+                gameState.tossDecision = Math.random() < 0.5 ? 'bat' : 'bowl';
+                // Determine who bats first based on comp's decision
+                gameState.isUserBatting = (gameState.tossDecision === 'bowl'); // If comp bowls, user bats
+            }
+            // If user wins, decision is deferred until userChooseBat/Bowl
+
+            // Set up initial bowler for the first innings
+            gameState.score.bowling.currentBowlerIndex = 5; // Start with player 6 (index 5) as bowler
+
+            // Render updated toss screen
+            renderScreen();
+        };
+
+        /** User chooses to bat after winning the toss. */
+        const userChooseBat = () => {
+            gameState.tossDecision = 'bat';
+            gameState.isUserBatting = true; // User bats first
+            gameState.score.bowling.currentBowlerIndex = 5;
+            saveState();
+            renderScreen();
+        };
+
+        /** User chooses to bowl after winning the toss. */
+        const userChooseBowl = () => {
+            gameState.tossDecision = 'bowl';
+            gameState.isUserBatting = false; // Computer bats first
+            gameState.score.bowling.currentBowlerIndex = 5;
+            saveState();
+            renderScreen();
+        };
+
+
+        /** Handles the logic for a single ball (dice roll). */
+        const handleRoll = () => {
+            // Disable roll button during animation/processing
+            const rollButton = document.getElementById('roll-button');
+            if (rollButton) rollButton.disabled = true;
+
+            const actionMessage = document.getElementById('action-message');
+            if (actionMessage) actionMessage.textContent = 'Rolling...';
+
+            // 1. Dice Roll
+            const batRoll = rollDice();
+            const bowlRoll = rollDice();
+            const isOut = batRoll === bowlRoll;
+            const runsScored = isOut ? 0 : batRoll;
+
+            // 2. Animate Dice
+            const batDiceContainer = document.getElementById('batting-dice');
+            const bowlDiceContainer = document.getElementById('bowling-dice');
+
+            if (batDiceContainer && bowlDiceContainer) {
+                batDiceContainer.innerHTML = getDiceHtml(1); // Reset for animation start
+                bowlDiceContainer.innerHTML = getDiceHtml(1);
+
+                batDiceContainer.classList.add('roll-animation');
+                bowlDiceContainer.classList.add('roll-animation');
+            }
+
+            setTimeout(() => {
+                if (batDiceContainer && bowlDiceContainer) {
+                    batDiceContainer.classList.remove('roll-animation');
+                    bowlDiceContainer.classList.remove('roll-animation');
+                    batDiceContainer.innerHTML = getDiceHtml(batRoll);
+                    bowlDiceContainer.innerHTML = getDiceHtml(bowlRoll);
+                }
+
+                // 3. Update Score
+                updateScore(isOut, runsScored);
+
+                // 4. Update UI/Re-enable Button
+                if (actionMessage) {
+                    if (isOut) {
+                        actionMessage.innerHTML = `<span class="font-bold text-cricket-red">OUT!</span> Both rolled ${batRoll}.`;
+                    } else {
+                        actionMessage.innerHTML = `<span class="font-bold text-cricket-green">Run!</span> Batsman rolled ${batRoll} and scores ${runsScored}.`;
+                    }
+                }
+
+                // Check for innings/match end *after* score update
+                checkInningsEnd();
+                renderScreen();
+
+                if (rollButton && !gameState.matchResult) rollButton.disabled = false;
+
+            }, 700); // Wait for animation
+        };
+
+        /** Updates the central game score based on the dice outcome and handles two batsmen logic. */
+        const updateScore = (isOut, runsScored) => {
+            const score = gameState.score.batting;
+            const battingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
+            const bowlingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId;
+            const battingTeam = gameState.teams[battingTeamId];
+            const bowlingTeam = gameState.teams[bowlingTeamId];
+
+            // Get current batsman (who rolled) and bowler
+            const currentBatsmanOnStrike = battingTeam.players[score.onStrikePlayerIndex];
+            const bowler = bowlingTeam.players[gameState.score.bowling.currentBowlerIndex];
+
+            // 1. Update Balls Faced for the on-strike batsman & bowler
+            currentBatsmanOnStrike.B += 1;
+            bowler.Balls += 1;
+
+            // 2. Update Runs for batsman, bowler, and total team score
+            currentBatsmanOnStrike.R += runsScored;
+            bowler.Runs += runsScored; // Bowler concedes runs regardless if out or not
+            if (runsScored === 4) currentBatsmanOnStrike.Fours += 1;
+            if (runsScored === 6) currentBatsmanOnStrike.Sixes += 1;
+            currentBatsmanOnStrike.SR = currentBatsmanOnStrike.B > 0 ? ((currentBatsmanOnStrike.R / currentBatsmanOnStrike.B) * 100).toFixed(2) : 0.0;
+            score.runs += runsScored; // Total team runs
+
+            // 3. Handle Wicket
+            if (isOut) {
+                currentBatsmanOnStrike.out = true;
+                score.wickets += 1;
+                bowler.W += 1;
+
+                // Bring in next player if available
+                if (score.nextPlayerIndex < 11) {
+                    score.onStrikePlayerIndex = score.nextPlayerIndex; // New batsman takes strike
+                    score.nextPlayerIndex++;
+                } else {
+                    // All out scenario - will be caught by checkInningsEnd
+                }
+            } else {
+                // Not out, check for strike rotation on odd runs (excluding 0)
+                if (runsScored % 2 !== 0 && runsScored > 0) {
+                    // Swap on-strike and off-strike batsmen
+                    [score.onStrikePlayerIndex, score.offStrikePlayerIndex] = [score.offStrikePlayerIndex, score.onStrikePlayerIndex];
+                }
+            }
+
+            // 4. Update Ball Count for the overall innings
+            score.balls += 1;
+
+            // 5. Check for End of Over
+            if (score.balls === 6) {
+                score.overs += 1;
+                score.balls = 0;
+
+                // Swap strike at the end of the over
+                [score.onStrikePlayerIndex, score.offStrikePlayerIndex] = [score.offStrikePlayerIndex, score.onStrikePlayerIndex];
+
+                // Change Bowler (simple rotation: players 6-11, indices 5-10)
+                gameState.score.bowling.currentBowlerIndex = (gameState.score.bowling.currentBowlerIndex + 1);
+                if (gameState.score.bowling.currentBowlerIndex > 10) {
+                    gameState.score.bowling.currentBowlerIndex = 5; // Restart from player 6
+                }
+            }
+
+            // Update Bowler's O and Econ after all changes
+            bowler.O = Math.floor(bowler.Balls / 6);
+            const bowlerBallsInCurrentOver = bowler.Balls % 6;
+            if (bowler.O === 0 && bowlerBallsInCurrentOver > 0) {
+                 bowler.Econ = ((bowler.Runs / bowlerBallsInCurrentOver) * 6).toFixed(2);
+            } else if (bowler.O > 0) {
+                bowler.Econ = (bowler.Runs / bowler.O).toFixed(2);
+            } else {
+                bowler.Econ = 0.0;
+            }
+
+            // Update team overall scorecard view to include new players who have come to bat
+            battingTeam.battingScorecard = battingTeam.players.slice(0, score.nextPlayerIndex);
+
+            saveState();
+        };
+
+        /** Checks if the innings or match has ended. */
+        const checkInningsEnd = () => {
+            const score = gameState.score.batting;
+
+            // Condition 1: All wickets fallen (10 wickets)
+            const allOut = score.wickets === 10;
+
+            // Condition 2: Max overs bowled
+            const oversComplete = score.overs === gameState.selectedOvers;
+
+            // Condition 3 (Innings 2 only): Target chased
+            const targetChased = gameState.innings === 2 && gameState.target > 0 && score.runs >= gameState.target;
+
+            if (allOut || oversComplete || targetChased) {
+                // Ensure last batsman is marked as having played in scorecard slice
+                if (score.nextPlayerIndex <= 11) score.nextPlayerIndex = 11;
+                endInnings();
+            }
+        };
+
+        /** Finalizes the current innings score and prepares for the next. */
+        const endInnings = () => {
+            const currentBattingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
+            const currentTeam = gameState.teams[currentBattingTeamId];
+
+            // 1. Store Final Scorecard for this innings
+            currentTeam.inningsScore = {
+                runs: gameState.score.batting.runs,
+                wickets: gameState.score.batting.wickets,
+                overs: gameState.score.batting.overs,
+                balls: gameState.score.batting.balls
+            };
+            // Ensure final scorecard reflects all who played
+            currentTeam.battingScorecard = currentTeam.players.slice(0, gameState.score.batting.nextPlayerIndex);
+
+            // 2. Check if it's the end of the match
+            if (gameState.innings === 2) {
+                endMatch();
+                return;
+            }
+
+            // 3. Prepare for Innings 2 (set target and swap roles)
+            gameState.innings = 2;
+            gameState.target = gameState.score.batting.runs + 1; // Target is 1 run more than Innings 1 score
+            gameState.isUserBatting = !gameState.isUserBatting; // Swap roles for next innings
+
+            // Reset score tracker for new innings
+            gameState.score.batting = {
+                runs: 0, wickets: 0, overs: 0, balls: 0,
+                onStrikePlayerIndex: 0, offStrikePlayerIndex: 1, nextPlayerIndex: 2
+            };
+            gameState.score.bowling = {
+                overs: 0, balls: 0, wickets: 0, runsConceded: 0,
+                currentBowlerIndex: 5 // Reset bowler index
+            };
+
+            // Display message box for innings break
+            showInningsBreakMessage();
+        };
+
+        /** Displays a modal/message for the innings break. */
+        const showInningsBreakMessage = () => {
+            // Determine which team batted in innings 1 and which will bat in innings 2
+            const innings1BattingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId; // Team that just finished batting (innings 1)
+            const innings2BattingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId; // Team that will bat next (innings 2)
+
+            const innings1TeamName = gameState.teams[innings1BattingTeamId].name;
+            const innings2TeamName = gameState.teams[innings2BattingTeamId].name;
+
+            const message = `
+                <div id="innings-break-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+                    <div class="bg-white card p-8 w-full max-w-md text-center">
+                        <h3 class="text-3xl font-bold mb-4 text-cricket-gold">INNINGS BREAK!</h3>
+                        <p class="text-xl mb-6">End of Innings 1. Target set!</p>
+                        <p class="text-lg mb-8">${innings1TeamName} scored ${gameState.target - 1} runs.</p>
+                        <p class="text-xl font-semibold mb-8 text-cricket-green">${innings2TeamName} will now bat in Innings 2. They need ${gameState.target} runs to win from ${gameState.selectedOvers} overs.</p>
+                        <button onclick="document.getElementById('innings-break-modal').remove(); navigateTo('match');" class="btn-primary">
+                            Continue to Innings 2
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', message);
+        };
+
+        /** Determines the match winner and sets the final result. */
+        const endMatch = () => {
+            const teamA = gameState.teams['A'];
+            const teamB = gameState.teams['B'];
+
+            // Determine which team batted first and second
+            const firstBattingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId;
+            const secondBattingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
+
+            const innings1Score = gameState.teams[firstBattingTeamId].inningsScore;
+            const innings2Score = gameState.teams[secondBattingTeamId].inningsScore;
+
+            if (!innings1Score || !innings2Score) {
+                console.error("Match finished without two complete innings scores.");
+                gameState.matchResult = "Error: Incomplete scores";
+                navigateTo('summary');
+                return;
+            }
+
+            let resultLine = '';
+            let winnerTeamId = '';
+            let winnerTeamName = '';
+
+            // If second batting team (chasing) has more runs
+            if (innings2Score.runs >= innings1Score.runs + 1) { // They reached or surpassed target
+                winnerTeamId = secondBattingTeamId;
+                winnerTeamName = gameState.teams[secondBattingTeamId].name;
+                const wicketsRemaining = 10 - innings2Score.wickets;
+                resultLine = `${winnerTeamName} won by ${wicketsRemaining} wickets`;
+            }
+            // If first batting team (set the target) has more runs
+            else if (innings1Score.runs > innings2Score.runs) {
+                winnerTeamId = firstBattingTeamId;
+                winnerTeamName = gameState.teams[firstBattingTeamId].name;
+                const runMargin = innings1Score.runs - innings2Score.runs;
+                resultLine = `${winnerTeamName} won by ${runMargin} runs`;
+            } else {
+                // Tie (if scores are equal and 10 wickets fell for 2nd batting team)
+                resultLine = `The match was tied!`;
+                winnerTeamName = "No Winner"; // Or a specific tie handling
+            }
+
+            // 1. Calculate Man of the Match and final summary structure
+            const summary = generateMatchSummary(winnerTeamName, resultLine, firstBattingTeamId, secondBattingTeamId);
+            gameState.summary = summary;
+            gameState.matchResult = resultLine;
+
+            // 2. Update Global Records
+            updateGlobalRecords(summary, winnerTeamId, winnerTeamName);
+
+            // 3. Navigate to Summary Screen
+            navigateTo('summary');
+        };
+
+        // --- SUMMARY & RECORDS LOGIC ---
+
+        /** Generates the match summary data structure. */
+        const generateMatchSummary = (winnerName, resultLine, innings1BattingTeamId, innings2BattingTeamId) => {
+            const teamA = gameState.teams['A'];
+            const teamB = gameState.teams['B'];
+
+            const getInningsDetails = (battingTeamId, bowlingTeamId) => {
+                const battingTeam = gameState.teams[battingTeamId];
+                const bowlingTeam = gameState.teams[bowlingTeamId]; // The team that bowled against battingTeam
+                const score = battingTeam.inningsScore;
+
+                if (!score) return null; // Should not happen in a complete match
+
+                // Batsmen (R > 0), sorted by runs
+                const topBatsmen = battingTeam.players
+                    .filter(p => p.R > 0)
+                    .sort((a, b) => b.R - a.R)
+                    .slice(0, 3)
+                    .map(p => ({ name: p.name, runs: p.R, balls: p.B }));
+
+                // Bowlers (W > 0 or R > 0), sorted by wickets then runs conceded
+                const topBowlers = bowlingTeam.players
+                    .filter(p => p.Runs > 0 || p.W > 0)
+                    .sort((a, b) => b.W - a.W || a.Runs - b.Runs) // Sort by wickets descending, then runs ascending
+                    .slice(0, 3)
+                    .map(p => ({ name: p.name, overs: `${p.O}.${p.Balls % 6}`, wickets: p.W, runs: p.Runs, econ: p.Econ }));
+
+                return {
+                    name: battingTeam.name,
+                    score: `${score.runs}/${score.wickets} (${score.overs}.${score.balls} Overs)`,
+                    topBatsmen,
+                    topBowlers,
+                };
+            };
+
+            // Call getInningsDetails for both innings, correctly identifying batting and bowling teams for each
+            const innings1 = getInningsDetails(innings1BattingTeamId, innings2BattingTeamId); // 1st batting team, 2nd batting team bowled
+            const innings2 = getInningsDetails(innings2BattingTeamId, innings1BattingTeamId); // 2nd batting team, 1st batting team bowled
+
+            // Determine Man of the Match (MoM)
+            const allPlayers = [...teamA.players, ...teamB.players];
+            let bestImpact = { name: 'N/A', score: -1, type: '', teamName: '' };
+
+            allPlayers.forEach(p => {
+                // Impact Score = (Runs * 1.5) + (Wickets * 15) - (Runs Conceded * 0.5)
+                // Only consider players who actually played (faced balls or bowled balls)
+                if (p.B > 0 || p.Balls > 0) {
+                    const impact = (p.R * 1.5) + (p.W * 15) - (p.Runs * 0.5);
+                    const team = teamA.players.includes(p) ? teamA : teamB;
+
+                    if (impact > bestImpact.score) {
+                        bestImpact = {
+                            name: p.name,
+                            score: impact,
+                            type: (p.R > p.Runs) || (p.R > 0 && p.W === 0) ? 'Batting' : (p.W > 0 ? 'Bowling' : 'All-Round'), // More nuanced type
+                            teamName: team.name
+                        };
+                    }
+                }
+            });
+            if (bestImpact.name === 'N/A' && allPlayers.length > 0) {
+                // Fallback if no impact player found (e.g., very low scoring game, default to first player)
+                bestImpact = { name: allPlayers[0].name, score: 0, type: 'Participation', teamName: allPlayers[0].name.includes(teamA.name) ? teamA.name : teamB.name };
+            }
+
+
+            return {
+                matchDate: new Date().toLocaleDateString(),
+                innings1,
+                innings2,
+                resultLine: resultLine,
+                manOfTheMatch: bestImpact
+            };
+        };
+
+        /** Updates the persistent global records. */
+        const updateGlobalRecords = (summary, winnerTeamId, winnerTeamName) => {
+            // 1. Update Match History
+            globalRecords.matchHistory.unshift({
+                date: summary.matchDate,
+                result: summary.resultLine,
+                mom: summary.manOfTheMatch.name,
+            });
+
+            // 2. Update Player Statistics (Simple combined stats)
+            const allPlayers = [...gameState.teams['A'].players, ...gameState.teams['B'].players];
+            allPlayers.forEach(p => {
+                // Only update stats for players who actually participated (faced balls or bowled)
+                if (p.B > 0 || p.Balls > 0) {
+                    const teamName = gameState.teams['A'].players.includes(p) ? gameState.teams['A'].name : gameState.teams['B'].name;
+                    const key = `${p.name}_${teamName}`; // Unique key for player stats
+
+                    if (!globalRecords.playerStats[key]) {
+                        globalRecords.playerStats[key] = { name: p.name, teamName: teamName, R: 0, B: 0, W: 0, Runs: 0, Matches: 0 };
+                    }
+                    const stats = globalRecords.playerStats[key];
+                    stats.R += p.R;
+                    stats.B += p.B;
+                    stats.W += p.W;
+                    stats.Runs += p.Runs;
+                    stats.Matches += 1;
+                }
+            });
+
+            // 3. Check Best Batting/Bowling
+            allPlayers.forEach(p => {
+                // Only consider players who actually played
+                if (p.B > 0 || p.Balls > 0) {
+                    const team = gameState.teams['A'].players.includes(p) ? gameState.teams['A'] : gameState.teams['B'];
+                    const teamName = team.name;
+
+                    if (!globalRecords.bestBatting || p.R > globalRecords.bestBatting.runs) {
+                        globalRecords.bestBatting = { runs: p.R, playerName: p.name, teamName: teamName };
+                    }
+
+                    if (!globalRecords.bestBowling || p.W > globalRecords.bestBowling.wickets || (p.W === globalRecords.bestBowling.wickets && p.Runs < globalRecords.bestBowling.runs)) {
+                        globalRecords.bestBowling = { wickets: p.W, runs: p.Runs, playerName: p.name, teamName: teamName };
+                    }
+                }
+            });
+
+            saveState();
+        };
+
+        const renderMatchSummary = () => {
+            const summary = gameState.summary;
+            if (!summary) return `<div class="max-w-xl mx-auto p-8 bg-white card text-center"><h3 class="text-xl font-bold text-cricket-red">ERROR: No match summary data found.</h3><button onclick="navigateTo('start')" class="btn-primary mt-4">Back to Menu</button></div>`;
+
+            const renderDetails = (innings) => {
+                if (!innings) return `<p class="text-gray-500">Innings details not recorded.</p>`;
+                return `
+                    <div class="p-4 bg-gray-50 rounded-lg shadow-inner">
+                        <p class="text-lg font-semibold mb-2">${innings.name}: <span class="text-cricket-green font-extrabold">${innings.score}</span></p>
+
+                        <h4 class="font-bold mt-3 border-b border-gray-200 pb-1">Top Batsmen</h4>
+                        <ul class="list-disc list-inside ml-2 text-sm space-y-1">
+                            ${innings.topBatsmen.map(p => `<li>${p.name}: ${p.runs} runs (${p.balls} balls)</li>`).join('') || '<li>No significant batting.</li>'}
+                        </ul>
+
+                        <h4 class="font-bold mt-3 border-b border-gray-200 pb-1">Top Bowlers</h4>
+                        <ul class="list-disc list-inside ml-2 text-sm space-y-1">
+                            ${innings.topBowlers.map(p => `<li>${p.name}: ${p.overs} O, ${p.W}/${p.Runs} (Econ: ${p.econ})</li>`).join('') || '<li>No significant bowling.</li>'}
+                        </ul>
+                    </div>
+                `;
+            };
+
+            return `
+                <div class="max-w-4xl mx-auto p-8 bg-white card">
+                    <h2 class="text-4xl font-extrabold text-center mb-6 text-cricket-green">Match Summary</h2>
+                    <div class="text-center p-6 mb-8 rounded-xl bg-cricket-gold text-cricket-green shadow-xl">
+                        <p class="text-3xl font-black">${summary.resultLine}</p>
+                    </div>
+
+                    <!-- Man of the Match -->
+                    <div class="text-center mb-10 p-6 bg-yellow-50 rounded-xl border-4 border-cricket-gold">
+                        <h3 class="text-xl font-bold text-gray-700">MAN OF THE MATCH</h3>
+                        <p class="text-4xl font-extrabold text-cricket-green mt-2">${summary.manOfTheMatch.name}</p>
+                        <p class="text-lg text-gray-600">(${summary.manOfTheMatch.type} Performance for ${summary.manOfTheMatch.teamName})</p>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-6 mb-10">
+                        <div>
+                            <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 1</h3>
+                            ${renderDetails(summary.innings1)}
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 2</h3>
+                            ${renderDetails(summary.innings2)}
+                        </div>
+                    </div>
+
+                    <!-- Gemini Commentary Section (Optional) -->
+                    <div class="mt-8 pt-6 border-t border-gray-200">
+                        <h3 class="text-xl font-bold mb-4 text-gray-700">Optional Match Commentary (Gemini)</h3>
+                        <div id="gemini-commentary" class="p-4 bg-gray-100 rounded-lg shadow-inner min-h-[50px] text-gray-800">
+                            Click below to generate a descriptive narrative of the match.
+                        </div>
+                        <button id="generate-commentary-btn" onclick="generateCommentary()" class="bg-purple-600 text-white font-bold py-2 px-4 rounded-xl mt-4 hover:bg-purple-700 transition">
+                            Generate Commentary
+                        </button>
+                        <p id="gemini-error" class="text-cricket-red mt-2 hidden text-sm">API Key is missing or an error occurred.</p>
+                    </div>
+
+                    <div class="mt-8 text-center">
+                        <button onclick="resetMatchState()" class="btn-primary">
+                            Finish & Back to Menu
+                        </button>
+                    </div>
+                </div>
+            `;
+        };
+
+        /** Renders the Records & Statistics screen. */
+        const renderRecords = () => {
+            const records = globalRecords;
+            const historyRows = records.matchHistory.map((m, i) => `
+                <tr class="${i % 2 === 0 ? 'bg-gray-50' : 'bg-white'}">
+                    <td class="px-4 py-2">${m.date}</td>
+                    <td class="px-4 py-2 font-semibold">${m.result}</td>
+                    <td class="px-4 py-2">${m.mom}</td>
+                </tr>
+            `).join('');
+
+            const playerStatsArray = Object.values(records.playerStats).map(stats => ({
+                ...stats,
+                avg: stats.B > 0 ? (stats.R / stats.Matches).toFixed(1) : 0,
+                sr: stats.B > 0 ? ((stats.R / stats.B) * 100).toFixed(1) : 0,
+                // For bowling, it's better to show wickets/runs conceded. Economy can be total runs / total overs
+                econ: stats.O > 0 ? (stats.Runs / stats.O).toFixed(2) : (stats.Balls > 0 ? ((stats.Runs / (stats.Balls % 6)) * 6).toFixed(2) : 0.0) // Simple economy
+            }));
+
+            const statsRows = playerStatsArray.sort((a, b) => b.R - a.R).map((p, i) => `
+                <tr class="${i % 2 === 0 ? 'bg-gray-50' : 'bg-white'}">
+                    <td class="px-4 py-2 font-medium">${p.name} (${p.teamName})</td>
+                    <td class="px-4 py-2 text-right">${p.Matches}</td>
+                    <td class="px-4 py-2 text-right">${p.R}</td>
+                    <td class="px-4 py-2 text-right">${p.B}</td>
+                    <td class="px-4 py-2 text-right">${p.W}</td>
+                    <td class="px-4 py-2 text-right">${p.Runs}</td>
+                </tr>
+            `).join('');
+
+            const bestBatting = records.bestBatting ? `${records.bestBatting.runs} Runs by ${records.bestBatting.playerName} (${records.bestBatting.teamName})` : 'N/A';
+            const bestBowling = records.bestBowling ? `${records.bestBowling.wickets}/${records.bestBowling.runs} by ${records.bestBowling.playerName} (${records.bestBowling.teamName})` : 'N/A';
+
+
+            return `
+                <div class="max-w-4xl mx-auto p-8 bg-white card">
+                    <h2 class="text-4xl font-extrabold text-center mb-8 text-cricket-green">Career Records & Statistics</h2>
+
+                    <!-- Highlights -->
+                    <div class="grid md:grid-cols-2 gap-6 mb-8 text-center">
+                        <div class="p-4 bg-cricket-green text-white card">
+                            <h3 class="text-xl font-bold mb-2">Highest Score</h3>
+                            <p class="text-2xl font-extrabold">${bestBatting}</p>
+                        </div>
+                        <div class="p-4 bg-cricket-green text-white card">
+                            <h3 class="text-xl font-bold mb-2">Best Bowling</h3>
+                            <p class="text-2xl font-extrabold">${bestBowling}</p>
+                        </div>
+                    </div>
+
+                    <!-- Player Stats Table -->
+                    <h3 class="text-2xl font-bold mb-4 text-gray-700 border-b pb-2">Overall Player Stats</h3>
+                    <div class="overflow-x-auto mb-8 card">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Player (Team)</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Matches</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Runs</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Balls Faced</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Wickets</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Runs Conceded</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                ${statsRows || '<tr><td colspan="6" class="px-4 py-4 text-center text-gray-500">No career stats available.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Match History -->
+                    <h3 class="text-2xl font-bold mb-4 text-gray-700 border-b pb-2">Match History (${records.matchHistory.length} Total)</h3>
+                    <div class="overflow-x-auto card">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Result</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">M.O.M</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                ${historyRows || '<tr><td colspan="3" class="px-4 py-4 text-center text-gray-500">No match history found.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-8 text-center">
+                        <button onclick="navigateTo('start')" class="btn-primary">
+                            Back to Menu
+                        </button>
+                    </div>
+                </div>
+            `;
+        };
+
+        // --- TEAM EDITOR HANDLERS ---
+
+        /** Updates the team name in the game state. */
+        const updateTeamName = (teamId, newName) => {
+            gameState.teams[teamId].name = newName.trim() || `Team ${teamId}`;
+            saveState();
+        };
+
+        /** Updates a specific player's name in the game state. */
+        const updatePlayerName = (teamId, index, newName) => {
+            gameState.teams[teamId].players[index].name = newName.trim() || DEFAULT_PLAYERS[index];
+            saveState();
+        };
+
+        /** Sets which team the user controls. */
+        const setUserTeam = (teamId) => {
+            if (teamId === 'A') {
+                gameState.userTeamId = 'A';
+                gameState.compTeamId = 'B';
+            } else {
+                gameState.userTeamId = 'B';
+                gameState.compTeamId = 'A';
+            }
+            saveState();
+            renderScreen(); // Re-render to update radio buttons and display
+        };
+
+        // --- GEMINI API INTEGRATION ---
+
+        /** Generates narrative commentary using the Gemini API. */
+        async function generateCommentary() {
+            const commentaryDiv = document.getElementById('gemini-commentary');
+            const errorDiv = document.getElementById('gemini-error');
+            const button = document.getElementById('generate-commentary-btn');
+
+            if (API_KEY === "") {
+                errorDiv.textContent = "Error: API Key is missing. Skipping optional feature.";
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            // Disable button and show loading
+            button.disabled = true;
+            errorDiv.classList.add('hidden');
+            commentaryDiv.innerHTML = `<p class="text-center text-gray-500"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-cricket-green inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Generating detailed match commentary...</p>`;
+
+            const summaryData = gameState.summary;
+            const prompt = `Write a short (2-paragraph) and exciting cricket match commentary based on the following professional match summary. Focus on the tension and the Man of the Match performance. Match result: ${summaryData.resultLine}. Man of the Match: ${summaryData.manOfTheMatch.name}. Innings 1: ${summaryData.innings1.name} scored ${summaryData.innings1.score}. Innings 2: ${summaryData.innings2.name} scored ${summaryData.innings2.score}. Also include a short mention of the best batting and bowling performances in the match if they were significant, e.g., "A brilliant 50 runs by PlayerX" or "BowlerY took 3 wickets for 20 runs".`;
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: "You are a lively cricket commentator. Write an exciting narrative." }] },
+            };
+
+            try {
+                const response = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (text) {
+                    commentaryDiv.innerHTML = text.split('\n').map(p => `<p class="mb-3">${p}</p>`).join('');
+                } else {
+                    commentaryDiv.innerHTML = `<p class="text-cricket-red">Could not generate commentary. Check API key or response format. ${result.error ? result.error.message : ''}</p>`;
+                }
+            } catch (error) {
+                console.error("Gemini API Error:", error);
+                errorDiv.textContent = `Error generating commentary: ${error.message}`;
+                errorDiv.classList.remove('hidden');
+                commentaryDiv.innerHTML = `<p class="text-cricket-red">Failed to connect to the commentary service.</p>`;
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        // Simple fetch retry mechanism with exponential backoff
+        async function fetchWithRetry(url, options, retries = 3) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        // Throw error to trigger retry if status is not OK (e.g., 500)
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response;
+                } catch (error) {
+                    if (i < retries - 1) {
+                        const delay = Math.pow(2, i) * 1000; // 1s, 2s, 4s
+                        console.warn(`Retrying fetch (attempt ${i + 1}/${retries})...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        throw error; // Throw final error
+                    }
+                }
+            }
+        }
+
+        // --- INITIALIZATION ---
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadState(); // Load persistent data
+            // If the game state suggests a match is ongoing, resume it, otherwise go to start.
+            if (gameState.currentScreen === 'match' && gameState.matchResult) {
+                // If we land on match but it's finished, go to summary
+                gameState.currentScreen = 'summary';
+            } else if (gameState.currentScreen === 'match' && !gameState.matchResult && gameState.innings === 2 && gameState.score.batting.runs === 0 && gameState.score.batting.wickets === 0) {
+                 // Special case: if innings 1 finished, show innings break message
+                showInningsBreakMessage();
+            }
+            renderScreen();
+        });
+    </script>
+</body>
+</html>
+
+-----------------------------------------------------------------------------------
+
+1. when i click save & back to menu then it's not saving the player names, only the team name is saved. fix that.
+2. while showing the match summary the bowler stats are showing undefined/undefined please fix that.
+3. while editing player and team data let the user assign player roles and their bowling priority as well.
+4. there should be a delete data button for removing all saved data. 
+5. fix the above issues and then send me the complete copy paste ready code please.
