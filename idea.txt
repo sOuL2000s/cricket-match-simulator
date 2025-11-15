@@ -102,10 +102,50 @@
         &copy; 2025 Dice Cricket Game. All rights reserved. Built with pure HTML/JS/Tailwind.
     </footer>
 
+    <!-- Bulk Edit Roster Modal -->
+    <div id="bulk-edit-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 hidden">
+        <div class="bg-white card p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
+            <button onclick="hideBulkEditModal()" class="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold">&times;</button>
+            <h3 class="text-3xl font-bold mb-6 text-cricket-green text-center">Bulk Edit Team Roster</h3>
+
+            <p class="mb-4 text-gray-700">Enter your team and player names with roles below. The AI will parse it and update your teams.
+                <br><span class="font-semibold">Format:</span></p>
+            <pre class="bg-gray-100 p-3 rounded-md text-sm mb-4 border border-gray-200 overflow-x-auto">
+[Your Team A Name]:
+Player Name 1 (Batter)
+Player Name 2 (Bowler)
+Player Name 3 (Wicket Keeper)
+... (up to 11 players)
+
+[Your Team B Name]:
+Player Name X (All Rounder)
+Player Name Y (Batter)
+...</pre>
+            <p class="text-sm text-gray-600 mb-4">Valid roles: Batter, Wicket Keeper, All Rounder, Bowler. If a role is missing or unclear, it defaults to 'Batter'.</p>
+
+            <textarea id="bulk-roster-input"
+                      class="w-full h-64 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cricket-gold focus:border-cricket-gold mb-4 text-gray-800"
+                      placeholder="Enter your team and player details here..."
+            ></textarea>
+
+            <div id="bulk-edit-feedback" class="p-3 mb-4 rounded-lg text-sm hidden"></div>
+
+            <div class="flex justify-end space-x-4">
+                <button onclick="hideBulkEditModal()" class="bg-gray-500 text-white font-bold py-2 px-5 rounded-xl hover:bg-gray-600 transition">
+                    Cancel
+                </button>
+                <button id="process-bulk-roster-btn" onclick="processBulkRoster()" class="btn-primary py-2 px-5">
+                    Process with AI
+                </button>
+            </div>
+        </div>
+    </div>
+
+
     <script>
         // --- CONSTANTS AND CONFIGURATION ---
         const API_KEY = "AIzaSyCzx6ReMk8ohPJcCjGwHHzu7SvFccJqAbA"; // PASTE YOUR GEMINI API KEY HERE
-        const GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"; // Use the latest supported model
+        const GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"; // Using a general purpose flash model for good balance
         const OVERS_OPTIONS = [1, 5, 10, 20, 50]; // Available match lengths
         const LOCAL_STORAGE_KEY = 'diceCricketState';
         const LOCAL_STORAGE_RECORDS_KEY = 'diceCricketRecords';
@@ -130,6 +170,7 @@
             'Wicket Keeper', 'Bowler', 'Bowler', 'Bowler',
             'Bowler', 'Bowler', 'Bowler'
         ];
+        const VALID_ROLES = ['Batter', 'Wicket Keeper', 'All Rounder', 'Bowler']; // For validation
 
         // Player initial stat structure
         const getNewPlayerStats = (name, role) => ({
@@ -418,10 +459,7 @@
                                     placeholder="Player ${index + 1}">
                                 <select class="p-2 border rounded-lg focus:border-cricket-gold focus:ring-1 focus:ring-cricket-gold text-sm"
                                         onchange="updatePlayerRole('${teamId}', ${index}, this.value)">
-                                    <option value="Batter" ${player.role === 'Batter' ? 'selected' : ''}>Batter</option>
-                                    <option value="Wicket Keeper" ${player.role === 'Wicket Keeper' ? 'selected' : ''}>Wicket Keeper</option>
-                                    <option value="All Rounder" ${player.role === 'All Rounder' ? 'selected' : ''}>All Rounder</option>
-                                    <option value="Bowler" ${player.role === 'Bowler' ? 'selected' : ''}>Bowler</option>
+                                    ${VALID_ROLES.map(role => `<option value="${role}" ${player.role === role ? 'selected' : ''}>${role}</option>`).join('')}
                                 </select>
                             </div>
                         `).join('')}
@@ -436,9 +474,12 @@
                         ${renderTeamPanel('A', teamA)}
                         ${renderTeamPanel('B', teamB)}
                     </div>
-                    <div class="mt-8 text-center">
+                    <div class="mt-8 text-center space-x-4">
                         <button onclick="navigateTo('start')" class="btn-primary bg-cricket-red hover:bg-red-700">
                             Save & Back to Menu
+                        </button>
+                        <button onclick="showBulkEditModal()" class="btn-primary bg-purple-600 hover:bg-purple-700">
+                            Bulk Edit Roster (AI)
                         </button>
                     </div>
                 </div>
@@ -1161,7 +1202,7 @@
                     <div class="mt-8 pt-6 border-t border-gray-200">
                         <h3 class="text-xl font-bold mb-4 text-gray-700">Optional Match Commentary (Gemini)</h3>
                         <div id="gemini-commentary" class="p-4 bg-gray-100 rounded-lg shadow-inner min-h-[50px] text-gray-800">
-                            Click below to generate a descriptive narrative of the match. (Requires a Gemini API Key)
+                            Click below to generate a descriptive narrative of the match.
                         </div>
                         <button id="generate-commentary-btn" onclick="generateCommentary()" class="bg-purple-600 text-white font-bold py-2 px-4 rounded-xl mt-4 hover:bg-purple-700 transition">
                             Generate Commentary
@@ -1322,7 +1363,196 @@
             renderScreen(); // Re-render to update radio buttons and display
         };
 
-        // --- GEMINI API INTEGRATION ---
+        // --- BULK ROSTER EDITING FUNCTIONS ---
+
+        const showBulkEditModal = () => {
+            const modal = document.getElementById('bulk-edit-modal');
+            const textarea = document.getElementById('bulk-roster-input');
+            const feedback = document.getElementById('bulk-edit-feedback');
+            modal.classList.remove('hidden');
+            feedback.classList.add('hidden');
+            feedback.textContent = '';
+
+            // Pre-fill textarea with current team data as a template
+            let prefillText = '';
+            prefillText += `${gameState.teams['A'].name}:\n`;
+            gameState.teams['A'].players.forEach(p => {
+                prefillText += `${p.name} (${p.role})\n`;
+            });
+            prefillText += `\n${gameState.teams['B'].name}:\n`;
+            gameState.teams['B'].players.forEach(p => {
+                prefillText += `${p.name} (${p.role})\n`;
+            });
+            textarea.value = prefillText;
+        };
+
+        const hideBulkEditModal = () => {
+            document.getElementById('bulk-edit-modal').classList.add('hidden');
+        };
+
+        const updateFeedback = (message, type = 'info') => {
+            const feedbackDiv = document.getElementById('bulk-edit-feedback');
+            feedbackDiv.classList.remove('hidden', 'bg-green-100', 'text-green-800', 'bg-red-100', 'text-red-800', 'bg-blue-100', 'text-blue-800');
+            if (type === 'success') {
+                feedbackDiv.classList.add('bg-green-100', 'text-green-800');
+            } else if (type === 'error') {
+                feedbackDiv.classList.add('bg-red-100', 'text-red-800');
+            } else {
+                feedbackDiv.classList.add('bg-blue-100', 'text-blue-800');
+            }
+            feedbackDiv.innerHTML = message;
+        };
+
+        const processBulkRoster = async () => {
+            const input = document.getElementById('bulk-roster-input').value;
+            const processButton = document.getElementById('process-bulk-roster-btn');
+
+            if (API_KEY === "PASTE_YOUR_GEMINI_API_KEY_HERE" || API_KEY.trim() === "") {
+                updateFeedback("Error: Gemini API Key is missing. Please add your key to the code to use this feature.", 'error');
+                return;
+            }
+
+            processButton.disabled = true;
+            updateFeedback(`
+                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-cricket-green inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                Processing roster with AI...
+            `, 'info');
+
+
+            const prompt = `You are a helpful assistant specialized in parsing cricket team rosters.
+The user will provide team and player information in a free-text format.
+Your task is to extract this information and return it as a JSON object.
+
+Expected input format:
+[Team Name 1]:
+Player Name 1 (Role 1)
+Player Name 2 (Role 2)
+...
+[Team Name 2]:
+Player Name X (Role X)
+...
+
+Example roles: Batter, Wicket Keeper, All Rounder, Bowler. If a role is missing or unclear, default it to 'Batter'. There should be up to 11 players per team.
+
+Output must be a JSON object with the following structure:
+{
+  "teams": {
+    "A": {
+      "name": "Team A's Name",
+      "players": [
+        {"name": "Player1 Name", "role": "Batter"},
+        {"name": "Player2 Name", "role": "Bowler"}
+        // ... up to 11 players
+      ]
+    },
+    "B": {
+      "name": "Team B's Name",
+      "players": [
+        {"name": "PlayerX Name", "role": "Wicket Keeper"},
+        {"name": "PlayerY Name", "role": "All Rounder"}
+        // ... up to 11 players
+      ]
+    }
+  }
+}
+
+Important:
+- Always assign players to "A" or "B" based on the order they appear. The first team described is Team A, the second is Team B.
+- Ensure roles are one of: 'Batter', 'Wicket Keeper', 'All Rounder', 'Bowler'. If an unrecognized role is found, default to 'Batter'.
+- If a team has fewer than 11 players in the input, only include the players provided. Do not invent missing players.
+- If a player name is empty, skip that player.
+- Make sure the JSON is perfectly formatted and valid, with no extra text or markdown outside the JSON block.
+
+User Input:
+${input}`;
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    responseMimeType: "application/json", // Crucial for getting JSON output
+                },
+            };
+
+            try {
+                const response = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                let parsedData;
+
+                try {
+                    // Gemini 1.5 Flash with responseMimeType="application/json" should return direct JSON
+                    // Older models or different configs might return JSON as string inside 'text'
+                    parsedData = result;
+                    if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+                        parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
+                    }
+                } catch (parseError) {
+                    console.error("Error parsing Gemini's response:", parseError);
+                    updateFeedback("AI response was not valid JSON. Please try again or refine your input. " + (result.candidates?.[0]?.content?.parts?.[0]?.text || result.error?.message), 'error');
+                    return;
+                }
+
+                if (parsedData && parsedData.teams && (parsedData.teams.A || parsedData.teams.B)) {
+                    updateTeamsFromParsedData(parsedData);
+                    saveState();
+                    hideBulkEditModal();
+                    renderScreen(); // Re-render the team editor to show changes
+                    alert("Team rosters updated successfully!"); // Use alert for clear confirmation
+                } else {
+                    updateFeedback("AI could not extract team data from your input. Please check the format and try again.", 'error');
+                }
+
+            } catch (error) {
+                console.error("Gemini API Error:", error);
+                updateFeedback(`Failed to connect to the AI service or an error occurred: ${error.message}`, 'error');
+            } finally {
+                processButton.disabled = false;
+            }
+        };
+
+        /** Updates the gameState with parsed team data from AI. */
+        const updateTeamsFromParsedData = (parsedData) => {
+            // Helper to update a single team
+            const updateSingleTeam = (teamId, parsedTeamData) => {
+                if (!parsedTeamData || !parsedTeamData.name || !parsedTeamData.players) {
+                    return; // Skip if parsed data for this team is incomplete
+                }
+
+                gameState.teams[teamId].name = parsedTeamData.name.trim() || `Team ${teamId}`;
+
+                // Create a new players array, starting with defaults
+                const newPlayers = DEFAULT_PLAYERS.map((defaultName, idx) =>
+                    getNewPlayerStats(defaultName, DEFAULT_ROLES[idx])
+                );
+
+                // Overlay parsed players onto the new array
+                parsedTeamData.players.slice(0, 11).forEach((parsedPlayer, idx) => {
+                    if (parsedPlayer.name && parsedPlayer.name.trim() !== '') {
+                        newPlayers[idx].name = parsedPlayer.name.trim();
+                        newPlayers[idx].role = VALID_ROLES.includes(parsedPlayer.role) ? parsedPlayer.role : 'Batter'; // Validate role
+                    }
+                });
+                gameState.teams[teamId].players = newPlayers;
+            };
+
+            // Process Team A
+            if (parsedData.teams.A) {
+                updateSingleTeam('A', parsedData.teams.A);
+            }
+
+            // Process Team B
+            if (parsedData.teams.B) {
+                updateSingleTeam('B', parsedData.teams.B);
+            }
+        };
+
+
+        // --- GEMINI API INTEGRATION (for Match Commentary) ---
 
         /** Generates narrative commentary using the Gemini API. */
         async function generateCommentary() {
@@ -1381,8 +1611,17 @@
                 try {
                     const response = await fetch(url, options);
                     if (!response.ok) {
-                        // Throw error to trigger retry if status is not OK (e.g., 500, 429)
-                        throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+                        // Attempt to read error message from response body
+                        let errorMessage = `HTTP error! status: ${response.status} - ${response.statusText}`;
+                        try {
+                            const errorBody = await response.json();
+                            if (errorBody.error && errorBody.error.message) {
+                                errorMessage += `: ${errorBody.error.message}`;
+                            }
+                        } catch (parseError) {
+                            // If response body isn't JSON, just use default message
+                        }
+                        throw new Error(errorMessage);
                     }
                     return response;
                 } catch (error) {
@@ -1417,7 +1656,8 @@
 </body>
 </html>
 
------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------
 
-1. can you add a bulk team roster editing feature where user will be able write player names, their roles and the team name. the gemini ai will read user's input and update the teams on team roster editor accordingly.
-2. please implement the above feature and send me the updated copy paste ready full code.
+1. the players are not behaving as per their roles properly because i saw that a weeket keeper was bowling, please look into it and fix it.
+2. i want a more customizable team roster editor where bowling priority could also be changable.
+3. after making these changes send me the complete copy paste ready code.
