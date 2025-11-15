@@ -50,20 +50,20 @@
         }
 
         /* Dot positioning for 1-6 */
-        .dot:nth-child(1) { grid-area: a; }
-        .dot:nth-child(2) { grid-area: b; }
-        .dot:nth-child(3) { grid-area: c; }
-        .dot:nth-child(4) { grid-area: d; }
-        .dot:nth-child(5) { grid-area: e; }
-        .dot:nth-child(6) { grid-area: f; }
-        .dot:nth-child(7) { grid-area: g; } /* Center dot for 1, 3, 5 */
-
         .dice-1 { grid-template-areas: ". . ." ". g ." ". . ."; }
         .dice-2 { grid-template-areas: "a . ." ". . ." ". . b"; }
         .dice-3 { grid-template-areas: "a . ." ". g ." ". . b"; }
         .dice-4 { grid-template-areas: "a . c" ". . ." "d . b"; }
         .dice-5 { grid-template-areas: "a . c" ". g ." "d . b"; }
         .dice-6 { grid-template-areas: "a . c" "e . f" "d . b"; }
+        /* Dots for specific positions */
+        .dice-1 .dot:nth-child(1) { grid-area: g; }
+        .dice-2 .dot:nth-child(1) { grid-area: a; } .dice-2 .dot:nth-child(2) { grid-area: b; }
+        .dice-3 .dot:nth-child(1) { grid-area: a; } .dice-3 .dot:nth-child(2) { grid-area: g; } .dice-3 .dot:nth-child(3) { grid-area: b; }
+        .dice-4 .dot:nth-child(1) { grid-area: a; } .dice-4 .dot:nth-child(2) { grid-area: c; } .dice-4 .dot:nth-child(3) { grid-area: d; } .dice-4 .dot:nth-child(4) { grid-area: b; }
+        .dice-5 .dot:nth-child(1) { grid-area: a; } .dice-5 .dot:nth-child(2) { grid-area: c; } .dice-5 .dot:nth-child(3) { grid-area: g; } .dice-5 .dot:nth-child(4) { grid-area: d; } .dice-5 .dot:nth-child(5) { grid-area: b; }
+        .dice-6 .dot:nth-child(1) { grid-area: a; } .dice-6 .dot:nth-child(2) { grid-area: c; } .dice-6 .dot:nth-child(3) { grid-area: e; } .dice-6 .dot:nth-child(4) { grid-area: f; } .dice-6 .dot:nth-child(5) { grid-area: d; } .dice-6 .dot:nth-child(6) { grid-area: b; }
+
 
         /* Animation for a quick roll effect */
         .roll-animation {
@@ -71,8 +71,8 @@
         }
 
         @keyframes roll {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(0.9); opacity: 0.5; }
+            0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+            50% { transform: scale(0.9) rotate(45deg); opacity: 0.5; }
         }
 
         /* General UI enhancements */
@@ -106,7 +106,7 @@
         // --- CONSTANTS AND CONFIGURATION ---
         const API_KEY = "AIzaSyCzx6ReMk8ohPJcCjGwHHzu7SvFccJqAbA"; // PASTE YOUR GEMINI API KEY HERE
         const GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"; // Use the latest supported model
-        const OVERS_OPTIONS = [5, 10, 20, 50]; // Available match lengths
+        const OVERS_OPTIONS = [1, 5, 10, 20, 50]; // Available match lengths
         const LOCAL_STORAGE_KEY = 'diceCricketState';
         const LOCAL_STORAGE_RECORDS_KEY = 'diceCricketRecords';
 
@@ -125,10 +125,16 @@
             "Wicket Keeper 5", "Bowler 6", "Bowler 7", "Bowler 8",
             "Bowler 9", "Bowler 10", "Bowler 11"
         ];
+        const DEFAULT_ROLES = [
+            'Batter', 'Batter', 'All Rounder', 'All Rounder',
+            'Wicket Keeper', 'Bowler', 'Bowler', 'Bowler',
+            'Bowler', 'Bowler', 'Bowler'
+        ];
 
         // Player initial stat structure
-        const getNewPlayerStats = (name) => ({
-            name: name,
+        const getNewPlayerStats = (name, role) => ({
+            name: name || "Unknown Player",
+            role: role || 'Batter', // New: Default role
             // Batting Stats
             R: 0, // Runs
             B: 0, // Balls Faced
@@ -138,7 +144,7 @@
             out: false,
             // Bowling Stats (only relevant for computer team bowling)
             O: 0, // Overs
-            Balls: 0, // Balls in current over
+            Balls: 0, // Balls in current over (used to calculate overs and Econ for current match)
             W: 0, // Wickets
             Runs: 0, // Runs conceded
             Econ: 0.0 // Economy Rate
@@ -169,19 +175,19 @@
                 },
                 bowling: {
                     overs: 0, balls: 0, wickets: 0, runsConceded: 0,
-                    currentBowlerIndex: 5 // Start with player 6 (index 5) as bowler
+                    currentBowlerIndex: 5 // Start with player 6 (index 5) as bowler for a simple rotation
                 },
             },
             teams: {
                 'A': {
                     name: 'Team A',
-                    players: DEFAULT_PLAYERS.map(getNewPlayerStats),
+                    players: DEFAULT_PLAYERS.map((name, idx) => getNewPlayerStats(name, DEFAULT_ROLES[idx])),
                     battingScorecard: [], // A snapshot of player stats who have batted in current innings
                     inningsScore: null // { runs, wickets, overs, balls } for a completed innings
                 },
                 'B': {
                     name: 'Team B',
-                    players: DEFAULT_PLAYERS.map(getNewPlayerStats),
+                    players: DEFAULT_PLAYERS.map((name, idx) => getNewPlayerStats(name, DEFAULT_ROLES[idx])),
                     battingScorecard: [],
                     inningsScore: null
                 }
@@ -214,30 +220,55 @@
 
                 if (stateJson) {
                     const loadedState = JSON.parse(stateJson);
-                    // Merge with default state to ensure all new properties exist
-                    const defaultState = getInitialGameState();
-                    gameState = { ...defaultState, ...loadedState };
+                    // Start with a fresh default state, then deep merge loaded state.
+                    // This ensures new properties are initialized if they didn't exist in saved data.
+                    gameState = getInitialGameState(); // Initialize with defaults first
 
-                    // Ensure player arrays are properly structured, especially if loaded from an older save
+                    // Deep merge properties that are objects/arrays and need specific handling
                     ['A', 'B'].forEach(teamId => {
-                        if (gameState.teams[teamId] && Array.isArray(gameState.teams[teamId].players)) {
-                            gameState.teams[teamId].players = gameState.teams[teamId].players.map((p, idx) =>
-                                getNewPlayerStats(p ? p.name || DEFAULT_PLAYERS[idx] : DEFAULT_PLAYERS[idx])
-                            );
-                        } else {
-                            gameState.teams[teamId].players = DEFAULT_PLAYERS.map(getNewPlayerStats);
+                        if (loadedState.teams?.[teamId]) {
+                            // Merge team-level properties (like name)
+                            gameState.teams[teamId] = { ...gameState.teams[teamId], ...loadedState.teams[teamId] };
+
+                            // Handle players array specifically
+                            if (loadedState.teams[teamId].players && Array.isArray(loadedState.teams[teamId].players)) {
+                                gameState.teams[teamId].players = loadedState.teams[teamId].players.map((loadedPlayer, idx) => {
+                                    // Get default structure for a player at this index (to ensure new properties like 'role' are added)
+                                    const defaultPlayer = getNewPlayerStats(DEFAULT_PLAYERS[idx], DEFAULT_ROLES[idx]);
+                                    return {
+                                        ...defaultPlayer, // Start with default structure
+                                        ...loadedPlayer,   // Overlay loaded data
+                                        name: loadedPlayer.name || defaultPlayer.name, // Ensure name is preserved
+                                        role: loadedPlayer.role || defaultPlayer.role  // Ensure role is preserved
+                                    };
+                                });
+                            }
                         }
                     });
+
+                    // Merge other top-level properties (like currentScreen, isMatchActive, selectedOvers, target, etc.)
+                    // This will overwrite simple types from getInitialGameState() but preserve objects handled above.
+                    gameState = { ...gameState, ...loadedState };
+
                 } else {
                     gameState = getInitialGameState();
                 }
 
                 if (recordsJson) {
                     globalRecords = JSON.parse(recordsJson);
+                    // Ensure new properties for records are initialized (e.g. totalBallsBowled in playerStats)
+                    for (const key in globalRecords.playerStats) {
+                        if (globalRecords.playerStats.hasOwnProperty(key)) {
+                            if (!globalRecords.playerStats[key].hasOwnProperty('totalBallsBowled')) {
+                                globalRecords.playerStats[key].totalBallsBowled = 0;
+                            }
+                        }
+                    }
                 }
             } catch (e) {
                 console.error("Error loading state from localStorage:", e);
                 gameState = getInitialGameState(); // Fallback to initial state
+                globalRecords = { matchHistory: [], playerStats: {}, bestBatting: null, bestBowling: null }; // Fallback for records
             }
         };
 
@@ -251,7 +282,7 @@
             }
         };
 
-        /** Resets the match state only, keeping team names and records. */
+        /** Resets the match state only, keeping team names, player names/roles, and global records. */
         const resetMatchState = () => {
             const teamA_name = gameState.teams['A'].name;
             const teamB_name = gameState.teams['B'].name;
@@ -259,7 +290,11 @@
             const compTeamId = gameState.compTeamId;
             const selectedOvers = gameState.selectedOvers; // Preserve selected overs
 
-            // Re-initialize game state structure
+            // Preserve current player names and roles before creating new player stat objects
+            const playerA_details = gameState.teams['A'].players.map(p => ({ name: p.name, role: p.role }));
+            const playerB_details = gameState.teams['B'].players.map(p => ({ name: p.name, role: p.role }));
+
+            // Re-initialize game state structure to clear all volatile match data
             gameState = getInitialGameState();
 
             // Restore persistent settings
@@ -269,10 +304,9 @@
             gameState.teams['B'].name = teamB_name;
             gameState.selectedOvers = selectedOvers;
 
-
-            // Reset player stats for new match but keep their names
-            gameState.teams['A'].players = DEFAULT_PLAYERS.map((_, idx) => getNewPlayerStats(teamA_name === 'Team A' ? DEFAULT_PLAYERS[idx] : gameState.teams['A'].players[idx].name));
-            gameState.teams['B'].players = DEFAULT_PLAYERS.map((_, idx) => getNewPlayerStats(teamB_name === 'Team B' ? DEFAULT_PLAYERS[idx] : gameState.teams['B'].players[idx].name));
+            // Restore player names and roles, then reset their match-specific stats
+            gameState.teams['A'].players = playerA_details.map((p, idx) => getNewPlayerStats(p.name, p.role));
+            gameState.teams['B'].players = playerB_details.map((p, idx) => getNewPlayerStats(p.name, p.role));
 
             gameState.teams['A'].battingScorecard = [];
             gameState.teams['B'].battingScorecard = [];
@@ -281,6 +315,15 @@
 
             saveState();
             navigateTo('start');
+        };
+
+        /** Clears all game data from local storage. */
+        const clearAllData = () => {
+            if (confirm("Are you sure you want to delete ALL game data (match history, player stats, current game)? This cannot be undone.")) {
+                localStorage.removeItem(LOCAL_STORAGE_KEY);
+                localStorage.removeItem(LOCAL_STORAGE_RECORDS_KEY);
+                location.reload(); // Reload the page to reset the app completely
+            }
         };
 
         // --- NAVIGATION AND SCREEN RENDERING ---
@@ -364,15 +407,22 @@
                             <span class="ml-2 text-lg font-semibold">${teamId === gameState.userTeamId ? 'Your Team' : 'Play as'}</span>
                         </label>
                     </div>
-                    <h4 class="text-sm font-semibold text-gray-500 mb-2">Edit Player Names:</h4>
+                    <h4 class="text-sm font-semibold text-gray-500 mb-2">Edit Player Names & Roles:</h4>
                     <div class="space-y-2 max-h-96 overflow-y-auto pr-2">
                         ${team.players.map((player, index) => `
                             <div class="flex items-center">
                                 <span class="w-8 text-cricket-green font-mono">${index + 1}.</span>
-                                <input class="flex-grow p-2 border rounded-lg focus:border-cricket-gold focus:ring-1 focus:ring-cricket-gold"
+                                <input class="flex-grow p-2 border rounded-lg focus:border-cricket-gold focus:ring-1 focus:ring-cricket-gold mr-2"
                                     type="text" value="${player.name}"
                                     onblur="updatePlayerName('${teamId}', ${index}, this.value)"
                                     placeholder="Player ${index + 1}">
+                                <select class="p-2 border rounded-lg focus:border-cricket-gold focus:ring-1 focus:ring-cricket-gold text-sm"
+                                        onchange="updatePlayerRole('${teamId}', ${index}, this.value)">
+                                    <option value="Batter" ${player.role === 'Batter' ? 'selected' : ''}>Batter</option>
+                                    <option value="Wicket Keeper" ${player.role === 'Wicket Keeper' ? 'selected' : ''}>Wicket Keeper</option>
+                                    <option value="All Rounder" ${player.role === 'All Rounder' ? 'selected' : ''}>All Rounder</option>
+                                    <option value="Bowler" ${player.role === 'Bowler' ? 'selected' : ''}>Bowler</option>
+                                </select>
                             </div>
                         `).join('')}
                     </div>
@@ -453,7 +503,7 @@
             // Get batsman details, with fallbacks for safety
             const currentBatsmanOnStrike = battingTeam.players[score.onStrikePlayerIndex] || { name: 'N/A', R: 0, B: 0 };
             const currentBatsmanOffStrike = battingTeam.players[score.offStrikePlayerIndex] || { name: 'N/A', R: 0, B: 0 };
-            const currentBowler = bowlingTeam.players[gameState.score.bowling.currentBowlerIndex] || { name: 'N/A' };
+            const currentBowler = bowlingTeam.players[gameState.score.bowling.currentBowlerIndex] || { name: 'N/A', O: 0, Balls: 0, Runs: 0, W: 0, Econ: 0.0 };
 
             const displayOvers = `${score.overs}.${score.balls}`;
             const targetDisplay = gameState.target > 0 ? `<span class="text-cricket-red font-semibold"> (Target: ${gameState.target})</span>` : '';
@@ -492,7 +542,7 @@
                             <div class="space-y-3">
                                 <p class="text-lg"><strong>On Strike:</strong> ${currentBatsmanOnStrike.name} <span class="font-mono text-cricket-red">(${currentBatsmanOnStrike.R} R, ${currentBatsmanOnStrike.B} B)</span></p>
                                 <p class="text-lg"><strong>Non-Striker:</strong> ${currentBatsmanOffStrike.name} <span class="font-mono text-gray-500">(${currentBatsmanOffStrike.R} R, ${currentBatsmanOffStrike.B} B)</span></p>
-                                <p class="text-lg"><strong>Bowler:</strong> ${currentBowler.name}</p>
+                                <p class="text-lg"><strong>Bowler:</strong> ${currentBowler.name} <span class="font-mono text-gray-500">(${currentBowler.O}.${currentBowler.Balls % 6} - ${currentBowler.W}/${currentBowler.Runs})</span></p>
                             </div>
                             <div id="action-message" class="mt-4 p-3 bg-blue-100 text-blue-800 rounded-lg text-sm font-medium">
                                 Waiting for the next roll...
@@ -521,7 +571,7 @@
             const players = battingTeam.players.slice(0, gameState.score.batting.nextPlayerIndex);
             const tableRows = players.map(player => `
                 <tr class="text-gray-700 ${player.out ? 'bg-red-50' : (player.B > 0 && !player.out ? 'bg-green-50' : 'bg-gray-50')}">
-                    <td class="px-4 py-2 font-medium">${player.name} ${player.out ? '<span class="text-cricket-red font-bold">(OUT)</span>' : (player.B > 0 ? '<span class="text-cricket-green font-bold">(NOT OUT)</span>' : '')}</td>
+                    <td class="px-4 py-2 font-medium">${player.name} <span class="text-xs text-gray-500">(${player.role})</span> ${player.out ? '<span class="text-cricket-red font-bold">(OUT)</span>' : (player.B > 0 ? '<span class="text-cricket-green font-bold">(NOT OUT)</span>' : '')}</td>
                     <td class="px-4 py-2 text-right">${player.R}</td>
                     <td class="px-4 py-2 text-right">${player.B}</td>
                     <td class="px-4 py-2 text-right">${player.Fours}</td>
@@ -532,11 +582,11 @@
 
             // Get bowling team's top bowler stats for the current innings
             const bowlingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId;
-            const bowlers = gameState.teams[bowlingTeamId].players.filter(p => p.W > 0 || p.Runs > 0);
+            const bowlers = gameState.teams[bowlingTeamId].players.filter(p => p.W > 0 || p.Runs > 0 || p.Balls > 0); // Include if they bowled any balls
             const topBowlers = bowlers.sort((a, b) => b.W - a.W || a.Runs - b.Runs).slice(0, 3); // Top 3 bowlers
             const bowlingRows = topBowlers.map(bowler => `
                 <tr class="bg-blue-50">
-                    <td class="px-4 py-2 font-medium">${bowler.name}</td>
+                    <td class="px-4 py-2 font-medium">${bowler.name} <span class="text-xs text-gray-500">(${bowler.role})</span></td>
                     <td class="px-4 py-2 text-right">${bowler.O}.${bowler.Balls % 6}</td>
                     <td class="px-4 py-2 text-right">${bowler.Runs}</td>
                     <td class="px-4 py-2 text-right">${bowler.W}</td>
@@ -617,8 +667,8 @@
             }
             // If user wins, decision is deferred until userChooseBat/Bowl
 
-            // Set up initial bowler for the first innings
-            gameState.score.bowling.currentBowlerIndex = 5; // Start with player 6 (index 5) as bowler
+            // Set up initial bowler for the first innings (player 6, index 5)
+            gameState.score.bowling.currentBowlerIndex = 5;
 
             // Render updated toss screen
             renderScreen();
@@ -663,7 +713,8 @@
             const bowlDiceContainer = document.getElementById('bowling-dice');
 
             if (batDiceContainer && bowlDiceContainer) {
-                batDiceContainer.innerHTML = getDiceHtml(1); // Reset for animation start
+                // Reset to 1 before animation starts for visual consistency
+                batDiceContainer.innerHTML = getDiceHtml(1);
                 bowlDiceContainer.innerHTML = getDiceHtml(1);
 
                 batDiceContainer.classList.add('roll-animation');
@@ -764,14 +815,14 @@
 
             // Update Bowler's O and Econ after all changes
             bowler.O = Math.floor(bowler.Balls / 6);
-            const bowlerBallsInCurrentOver = bowler.Balls % 6;
-            if (bowler.O === 0 && bowlerBallsInCurrentOver > 0) {
-                 bowler.Econ = ((bowler.Runs / bowlerBallsInCurrentOver) * 6).toFixed(2);
-            } else if (bowler.O > 0) {
-                bowler.Econ = (bowler.Runs / bowler.O).toFixed(2);
+            const totalBowledOversDecimal = bowler.O + (bowler.Balls % 6) / 6;
+
+            if (totalBowledOversDecimal > 0) {
+                bowler.Econ = (bowler.Runs / totalBowledOversDecimal).toFixed(2);
             } else {
-                bowler.Econ = 0.0;
+                bowler.Econ = 0.0; // No balls bowled yet
             }
+
 
             // Update team overall scorecard view to include new players who have come to bat
             battingTeam.battingScorecard = battingTeam.players.slice(0, score.nextPlayerIndex);
@@ -870,6 +921,8 @@
             const teamB = gameState.teams['B'];
 
             // Determine which team batted first and second
+            // gameState.isUserBatting is true if user is batting IN INNINGS 2
+            // So the first batting team was the one NOT isUserBatting initially.
             const firstBattingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId;
             const secondBattingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
 
@@ -901,7 +954,7 @@
                 const runMargin = innings1Score.runs - innings2Score.runs;
                 resultLine = `${winnerTeamName} won by ${runMargin} runs`;
             } else {
-                // Tie (if scores are equal and 10 wickets fell for 2nd batting team)
+                // Tie (if scores are equal and all wickets fell or overs completed for 2nd batting team)
                 resultLine = `The match was tied!`;
                 winnerTeamName = "No Winner"; // Or a specific tie handling
             }
@@ -941,10 +994,16 @@
 
                 // Bowlers (W > 0 or R > 0), sorted by wickets then runs conceded
                 const topBowlers = bowlingTeam.players
-                    .filter(p => p.Runs > 0 || p.W > 0)
+                    .filter(p => p.Runs > 0 || p.W > 0 || p.Balls > 0) // Include if they bowled any balls
                     .sort((a, b) => b.W - a.W || a.Runs - b.Runs) // Sort by wickets descending, then runs ascending
                     .slice(0, 3)
-                    .map(p => ({ name: p.name, overs: `${p.O}.${p.Balls % 6}`, wickets: p.W, runs: p.Runs, econ: p.Econ }));
+                    .map(p => ({
+                        name: p.name,
+                        overs: `${p.O}.${p.Balls % 6}`,
+                        wickets: p.W || 0, // FIX: Safely default to 0 if undefined/null
+                        runs: p.Runs || 0, // FIX: Safely default to 0 if undefined/null
+                        econ: p.Econ
+                    }));
 
                 return {
                     name: battingTeam.name,
@@ -980,8 +1039,14 @@
                 }
             });
             if (bestImpact.name === 'N/A' && allPlayers.length > 0) {
-                // Fallback if no impact player found (e.g., very low scoring game, default to first player)
-                bestImpact = { name: allPlayers[0].name, score: 0, type: 'Participation', teamName: allPlayers[0].name.includes(teamA.name) ? teamA.name : teamB.name };
+                // Fallback if no impact player found (e.g., very low scoring game, default to first player who played)
+                const firstPlayerWhoPlayed = allPlayers.find(p => p.B > 0 || p.Balls > 0);
+                if (firstPlayerWhoPlayed) {
+                     const team = teamA.players.includes(firstPlayerWhoPlayed) ? teamA : teamB;
+                     bestImpact = { name: firstPlayerWhoPlayed.name, score: 0, type: 'Participation', teamName: team.name };
+                } else {
+                     bestImpact = { name: 'No Player', score: 0, type: 'N/A', teamName: 'N/A' };
+                }
             }
 
 
@@ -1012,7 +1077,7 @@
                     const key = `${p.name}_${teamName}`; // Unique key for player stats
 
                     if (!globalRecords.playerStats[key]) {
-                        globalRecords.playerStats[key] = { name: p.name, teamName: teamName, R: 0, B: 0, W: 0, Runs: 0, Matches: 0 };
+                        globalRecords.playerStats[key] = { name: p.name, teamName: teamName, R: 0, B: 0, W: 0, Runs: 0, Matches: 0, totalBallsBowled: 0 };
                     }
                     const stats = globalRecords.playerStats[key];
                     stats.R += p.R;
@@ -1020,6 +1085,7 @@
                     stats.W += p.W;
                     stats.Runs += p.Runs;
                     stats.Matches += 1;
+                    stats.totalBallsBowled += p.Balls; // Accumulate total balls bowled
                 }
             });
 
@@ -1060,7 +1126,7 @@
 
                         <h4 class="font-bold mt-3 border-b border-gray-200 pb-1">Top Bowlers</h4>
                         <ul class="list-disc list-inside ml-2 text-sm space-y-1">
-                            ${innings.topBowlers.map(p => `<li>${p.name}: ${p.overs} O, ${p.W}/${p.Runs} (Econ: ${p.econ})</li>`).join('') || '<li>No significant bowling.</li>'}
+                            ${innings.topBowlers.map(p => `<li>${p.name}: ${p.overs} O, ${p.wickets}/${p.runs} (Econ: ${p.econ})</li>`).join('') || '<li>No significant bowling.</li>'}
                         </ul>
                     </div>
                 `;
@@ -1095,7 +1161,7 @@
                     <div class="mt-8 pt-6 border-t border-gray-200">
                         <h3 class="text-xl font-bold mb-4 text-gray-700">Optional Match Commentary (Gemini)</h3>
                         <div id="gemini-commentary" class="p-4 bg-gray-100 rounded-lg shadow-inner min-h-[50px] text-gray-800">
-                            Click below to generate a descriptive narrative of the match.
+                            Click below to generate a descriptive narrative of the match. (Requires a Gemini API Key)
                         </div>
                         <button id="generate-commentary-btn" onclick="generateCommentary()" class="bg-purple-600 text-white font-bold py-2 px-4 rounded-xl mt-4 hover:bg-purple-700 transition">
                             Generate Commentary
@@ -1123,13 +1189,23 @@
                 </tr>
             `).join('');
 
-            const playerStatsArray = Object.values(records.playerStats).map(stats => ({
-                ...stats,
-                avg: stats.B > 0 ? (stats.R / stats.Matches).toFixed(1) : 0,
-                sr: stats.B > 0 ? ((stats.R / stats.B) * 100).toFixed(1) : 0,
-                // For bowling, it's better to show wickets/runs conceded. Economy can be total runs / total overs
-                econ: stats.O > 0 ? (stats.Runs / stats.O).toFixed(2) : (stats.Balls > 0 ? ((stats.Runs / (stats.Balls % 6)) * 6).toFixed(2) : 0.0) // Simple economy
-            }));
+            const playerStatsArray = Object.values(records.playerStats).map(stats => {
+                const totalOversCareer = Math.floor(stats.totalBallsBowled / 6);
+                const ballsInCurrentOverCareer = stats.totalBallsBowled % 6;
+                let careerEcon = 0.0;
+                if (stats.totalBallsBowled > 0) {
+                    const totalOversDecimal = totalOversCareer + (ballsInCurrentOverCareer / 6);
+                    if (totalOversDecimal > 0) { // Avoid division by zero
+                        careerEcon = (stats.Runs / totalOversDecimal).toFixed(2);
+                    }
+                }
+
+                return {
+                    ...stats,
+                    sr: stats.B > 0 ? ((stats.R / stats.B) * 100).toFixed(1) : 0,
+                    econ: careerEcon
+                };
+            });
 
             const statsRows = playerStatsArray.sort((a, b) => b.R - a.R).map((p, i) => `
                 <tr class="${i % 2 === 0 ? 'bg-gray-50' : 'bg-white'}">
@@ -1139,6 +1215,7 @@
                     <td class="px-4 py-2 text-right">${p.B}</td>
                     <td class="px-4 py-2 text-right">${p.W}</td>
                     <td class="px-4 py-2 text-right">${p.Runs}</td>
+                    <td class="px-4 py-2 text-right">${p.econ}</td>
                 </tr>
             `).join('');
 
@@ -1174,10 +1251,11 @@
                                     <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Balls Faced</th>
                                     <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Wickets</th>
                                     <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Runs Conceded</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Economy</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200">
-                                ${statsRows || '<tr><td colspan="6" class="px-4 py-4 text-center text-gray-500">No career stats available.</td></tr>'}
+                                ${statsRows || '<tr><td colspan="7" class="px-4 py-4 text-center text-gray-500">No career stats available.</td></tr>'}
                             </tbody>
                         </table>
                     </div>
@@ -1203,6 +1281,9 @@
                         <button onclick="navigateTo('start')" class="btn-primary">
                             Back to Menu
                         </button>
+                        <button onclick="clearAllData()" class="btn-primary bg-cricket-red hover:bg-red-700 mt-4">
+                            Delete All Saved Data
+                        </button>
                     </div>
                 </div>
             `;
@@ -1219,6 +1300,12 @@
         /** Updates a specific player's name in the game state. */
         const updatePlayerName = (teamId, index, newName) => {
             gameState.teams[teamId].players[index].name = newName.trim() || DEFAULT_PLAYERS[index];
+            saveState();
+        };
+
+        /** Updates a specific player's role in the game state. */
+        const updatePlayerRole = (teamId, index, newRole) => {
+            gameState.teams[teamId].players[index].role = newRole;
             saveState();
         };
 
@@ -1243,8 +1330,8 @@
             const errorDiv = document.getElementById('gemini-error');
             const button = document.getElementById('generate-commentary-btn');
 
-            if (API_KEY === "") {
-                errorDiv.textContent = "Error: API Key is missing. Skipping optional feature.";
+            if (API_KEY === "PASTE_YOUR_GEMINI_API_KEY_HERE" || API_KEY.trim() === "") {
+                errorDiv.textContent = "Error: Gemini API Key is missing. Please add your key to the code to use this feature.";
                 errorDiv.classList.remove('hidden');
                 return;
             }
@@ -1260,7 +1347,7 @@
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
             const payload = {
                 contents: [{ parts: [{ text: prompt }] }],
-                systemInstruction: { parts: [{ text: "You are a lively cricket commentator. Write an exciting narrative." }] },
+                systemInstruction: { parts: [{ text: "You are a lively cricket commentator. Write an exciting narrative. Always provide the commentary as two distinct paragraphs." }] },
             };
 
             try {
@@ -1274,9 +1361,9 @@
                 const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
 
                 if (text) {
-                    commentaryDiv.innerHTML = text.split('\n').map(p => `<p class="mb-3">${p}</p>`).join('');
+                    commentaryDiv.innerHTML = text.split('\n').filter(p => p.trim() !== '').map(p => `<p class="mb-3">${p}</p>`).join('');
                 } else {
-                    commentaryDiv.innerHTML = `<p class="text-cricket-red">Could not generate commentary. Check API key or response format. ${result.error ? result.error.message : ''}</p>`;
+                    commentaryDiv.innerHTML = `<p class="text-cricket-red">Could not generate commentary. Check API key, model, or response format. ${result.error ? result.error.message : ''}</p>`;
                 }
             } catch (error) {
                 console.error("Gemini API Error:", error);
@@ -1294,14 +1381,14 @@
                 try {
                     const response = await fetch(url, options);
                     if (!response.ok) {
-                        // Throw error to trigger retry if status is not OK (e.g., 500)
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                        // Throw error to trigger retry if status is not OK (e.g., 500, 429)
+                        throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
                     }
                     return response;
                 } catch (error) {
                     if (i < retries - 1) {
-                        const delay = Math.pow(2, i) * 1000; // 1s, 2s, 4s
-                        console.warn(`Retrying fetch (attempt ${i + 1}/${retries})...`);
+                        const delay = Math.pow(2, i) * 1000 + Math.random() * 500; // 1s, 2s, 4s + jitter
+                        console.warn(`Retrying fetch (attempt ${i + 1}/${retries})...`, error);
                         await new Promise(resolve => setTimeout(resolve, delay));
                     } else {
                         throw error; // Throw final error
@@ -1318,11 +1405,13 @@
             if (gameState.currentScreen === 'match' && gameState.matchResult) {
                 // If we land on match but it's finished, go to summary
                 gameState.currentScreen = 'summary';
-            } else if (gameState.currentScreen === 'match' && !gameState.matchResult && gameState.innings === 2 && gameState.score.batting.runs === 0 && gameState.score.batting.wickets === 0) {
-                 // Special case: if innings 1 finished, show innings break message
+            } else if (gameState.currentScreen === 'match' && !gameState.matchResult && gameState.innings === 2 && gameState.score.batting.runs === 0 && gameState.score.batting.wickets === 0 && gameState.target > 0) {
+                 // Special case: if innings 1 finished, show innings break message before rendering match screen
                 showInningsBreakMessage();
+                // We navigate to 'match' from the modal, so no extra navigateTo('match') here
+            } else {
+                renderScreen(); // Render current screen
             }
-            renderScreen();
         });
     </script>
 </body>
@@ -1330,8 +1419,5 @@
 
 -----------------------------------------------------------------------------------
 
-1. when i click save & back to menu then it's not saving the player names, only the team name is saved. fix that.
-2. while showing the match summary the bowler stats are showing undefined/undefined please fix that.
-3. while editing player and team data let the user assign player roles and their bowling priority as well.
-4. there should be a delete data button for removing all saved data. 
-5. fix the above issues and then send me the complete copy paste ready code please.
+1. can you add a bulk team roster editing feature where user will be able write player names, their roles and the team name. the gemini ai will read user's input and update the teams on team roster editor accordingly.
+2. please implement the above feature and send me the updated copy paste ready full code.
