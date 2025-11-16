@@ -144,9 +144,10 @@ Player Name Y (Batter)
 
     <script>
         // --- CONSTANTS AND CONFIGURATION ---
-        const API_KEY = "PASTE_YOUR_GEMINI_API_KEY_HERE"; // PASTE YOUR GEMINI API KEY HERE
-        const GEMINI_MODEL = "gemini-1.5-flash-latest"; // Using a general purpose flash model for good balance
-        const OVERS_OPTIONS = [1, 5, 10, 20, 50]; // Available match lengths
+        const API_KEY = "AIzaSyCzx6ReMk8ohPJcCjGwHHzu7SvFccJqAbA"; // PASTE YOUR GEMINI API KEY HERE
+        const GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"; // Using a general purpose flash model for good balance
+        const LIMITED_OVERS_OPTIONS = [1, 5, 10, 20, 50]; // Available match lengths for Limited Overs
+        const TEST_MATCH_OVERS = 90; // Fixed overs per innings for Test Match
         const LOCAL_STORAGE_KEY = 'diceCricketState';
         const LOCAL_STORAGE_RECORDS_KEY = 'diceCricketRecords';
 
@@ -172,41 +173,60 @@ Player Name Y (Batter)
         ];
         const VALID_ROLES = ['Batter', 'Wicket Keeper', 'All Rounder', 'Bowler']; // For validation
 
-        // Player initial stat structure for a SINGLE MATCH
+        // Player initial stat structure for a SINGLE MATCH (these accumulate over all innings in a match)
         const getNewPlayerStats = (name, role) => ({
             name: name || "Unknown Player",
             role: role || 'Batter',
-            // Batting Stats (per match)
-            R: 0, // Runs
-            B: 0, // Balls Faced
-            Fours: 0,
-            Sixes: 0,
-            SR: 0.0, // Strike Rate
-            out: false,
-            // Bowling Stats (per match)
-            O: 0, // Overs
-            Balls: 0, // Balls in current over (used to calculate overs and Econ for current match)
-            W: 0, // Wickets
-            Runs: 0, // Runs conceded
-            Econ: 0.0 // Economy Rate
+            // Batting Stats (match totals)
+            R: 0, // Match Total Runs
+            B: 0, // Match Total Balls Faced
+            Fours: 0, // Match Total Fours
+            Sixes: 0, // Match Total Sixes
+            // SR will be calculated at end of match or on demand for match total.
+            // Bowling Stats (match totals)
+            O: 0, // Match Total Overs
+            Balls: 0, // Match Total Balls (for calculating total overs/econ)
+            W: 0, // Match Total Wickets
+            Runs: 0, // Match Total Runs conceded
+            // Econ will be calculated at end of match or on demand for match total.
+
+            // These track player's current innings specific data for display on scoreboard
+            currentInningsR: 0,
+            currentInningsB: 0,
+            currentInningsFours: 0,
+            currentInningsSixes: 0,
+            currentInningsSR: 0.0,
+            currentInningsOut: false, // Tracks if out in *current* innings
         });
 
         // Initial Game State Factory
         const getInitialGameState = () => ({
             currentScreen: 'start',
             isMatchActive: false,
+            gameMode: 'limited_overs', // NEW: 'limited_overs' or 'test_match'
             isUserBatting: null, // true/false - set after toss
             userTeamId: 'A',
             compTeamId: 'B',
+            currentBattingTeamId: null, // ID of the team currently batting
             tossWinner: null, // 'user' | 'comp'
             tossDecision: null, // 'bat' | 'bowl' (only set if user wins, or comp wins and makes choice)
-            target: 0,
-            innings: 1, // 1 or 2
+            target: 0, // Target for chasing team (Innings 2 for LO, Innings 4 for Test)
+            innings: 1, // 1, 2, 3, or 4 for Test Match; 1 or 2 for Limited Overs
             matchResult: null,
             summary: null,
-            selectedOvers: OVERS_OPTIONS[0], // Default to first option
+            selectedOvers: LIMITED_OVERS_OPTIONS[0], // Default for limited overs (from start menu)
+            oversPerInnings: LIMITED_OVERS_OPTIONS[0], // Actual overs for current match type/settings
+            isSimulating: false, // NEW: flag to indicate if simulation is active
 
-            // Match score tracking
+            // Test match specific state
+            testMatchState: {
+                team1Id: null, // Team that bats first overall (innings 1 & 3)
+                team2Id: null, // Team that bats second overall (innings 2 & 4)
+                currentLeadTrailMessage: '', // Message like "Team B trails by X runs"
+                matchFinishedByInningsWin: false // True if team 2 wins by an innings
+            },
+
+            // Match score tracking (current innings)
             score: {
                 batting: {
                     runs: 0, wickets: 0, overs: 0, balls: 0,
@@ -217,21 +237,21 @@ Player Name Y (Batter)
                 bowling: {
                     overs: 0, balls: 0, wickets: 0, runsConceded: 0,
                     currentBowlerIndex: 5, // Start with player 6 (index 5) as bowler for a new innings
-                    lastBowlerIndex: -1 // New: Track the bowler who bowled the previous over, -1 indicates no previous bowler
+                    lastBowlerIndex: -1 // Track the bowler who bowled the previous over, -1 indicates no previous bowler
                 },
             },
             teams: {
                 'A': {
                     name: 'Team A',
                     players: DEFAULT_PLAYERS.map((name, idx) => getNewPlayerStats(name, DEFAULT_ROLES[idx])),
-                    battingScorecard: [], // A snapshot of player stats who have batted in current innings
-                    inningsScore: null // { runs, wickets, overs, balls } for a completed innings
+                    inningsScorecardHistory: [], // Array of snapshot of player stats who have batted in each completed innings
+                    inningsScores: [], // Array of { runs, wickets, overs, balls } for each completed innings (up to 2 for Test)
                 },
                 'B': {
                     name: 'Team B',
                     players: DEFAULT_PLAYERS.map((name, idx) => getNewPlayerStats(name, DEFAULT_ROLES[idx])),
-                    battingScorecard: [],
-                    inningsScore: null
+                    inningsScorecardHistory: [],
+                    inningsScores: [],
                 }
             }
         });
@@ -262,34 +282,44 @@ Player Name Y (Batter)
 
                 if (stateJson) {
                     const loadedState = JSON.parse(stateJson);
-                    // Start with a fresh default state, then deep merge loaded state.
-                    // This ensures new properties are initialized if they didn't exist in saved data.
-                    gameState = getInitialGameState(); // Initialize with defaults first
+                    gameState = getInitialGameState(); // Initialize with defaults first for new properties
 
-                    // Deep merge properties that are objects/arrays and need specific handling
-                    ['A', 'B'].forEach(teamId => {
-                        if (loadedState.teams?.[teamId]) {
-                            // Merge team-level properties (like name)
-                            gameState.teams[teamId] = { ...gameState.teams[teamId], ...loadedState.teams[teamId] };
+                    // Force `isSimulating` to false on load to prevent auto-starting simulation if browser was closed mid-sim.
+                    loadedState.isSimulating = false;
 
-                            // Handle players array specifically
-                            if (loadedState.teams[teamId].players && Array.isArray(loadedState.teams[teamId].players)) {
-                                gameState.teams[teamId].players = loadedState.teams[teamId].players.map((loadedPlayer, idx) => {
-                                    // Get default structure for a player at this index (to ensure new properties like 'role' are added)
-                                    const defaultPlayer = getNewPlayerStats(DEFAULT_PLAYERS[idx], DEFAULT_ROLES[idx]);
-                                    return {
-                                        ...defaultPlayer, // Start with default structure (per match stats)
-                                        name: loadedPlayer.name || defaultPlayer.name, // Overlay loaded name
-                                        role: loadedPlayer.role || defaultPlayer.role  // Overlay loaded role
-                                    };
-                                }).slice(0, 11); // Ensure no more than 11 players if corrupted data exists
+                    // Deep merge for complex objects (teams, testMatchState)
+                    // This ensures existing data is kept, and new properties from getInitialGameState are added.
+                    Object.keys(gameState).forEach(key => {
+                        if (typeof gameState[key] === 'object' && gameState[key] !== null && !Array.isArray(gameState[key])) {
+                            if (loadedState[key]) {
+                                gameState[key] = { ...gameState[key], ...loadedState[key] };
+                            }
+                        } else {
+                            if (typeof loadedState[key] !== 'undefined') {
+                                gameState[key] = loadedState[key];
                             }
                         }
                     });
 
-                    // Merge other top-level properties (like currentScreen, isMatchActive, selectedOvers, target, etc.)
-                    // This will overwrite simple types from getInitialGameState() but preserve objects handled above.
-                    gameState = { ...gameState, ...loadedState };
+                    // Special handling for players array within teams to ensure new player properties are initialized
+                    ['A', 'B'].forEach(teamId => {
+                        if (loadedState.teams?.[teamId]?.players && Array.isArray(loadedState.teams[teamId].players)) {
+                            gameState.teams[teamId].players = loadedState.teams[teamId].players.map((loadedPlayer, idx) => {
+                                const defaultPlayer = getNewPlayerStats(DEFAULT_PLAYERS[idx], DEFAULT_ROLES[idx]);
+                                return {
+                                    ...defaultPlayer, // Start with default structure to ensure all new properties exist
+                                    ...loadedPlayer, // Overlay loaded properties (name, role, accumulated stats)
+                                    // Ensure currentInnings specific stats are reset on load if resuming a match
+                                    currentInningsR: 0, currentInningsB: 0, currentInningsFours: 0,
+                                    currentInningsSixes: 0, currentInningsSR: 0.0, currentInningsOut: false
+                                };
+                            }).slice(0, 11); // Ensure no more than 11 players if corrupted data exists
+                        }
+                        // Ensure inningsScorecardHistory is an array if not loaded
+                        if (!gameState.teams[teamId].inningsScorecardHistory) {
+                            gameState.teams[teamId].inningsScorecardHistory = [];
+                        }
+                    });
 
                 } else {
                     gameState = getInitialGameState();
@@ -332,14 +362,14 @@ Player Name Y (Batter)
             const teamB_name = gameState.teams['B'].name;
             const userTeamId = gameState.userTeamId;
             const compTeamId = gameState.compTeamId;
-            const selectedOvers = gameState.selectedOvers; // Preserve selected overs
+            const selectedOvers = gameState.selectedOvers;
+            const gameMode = gameState.gameMode;
+            // oversPerInnings is reset by getInitialGameState, then re-set by startNewMatch or setGameMode
 
-            // Preserve current player names and roles before creating new player stat objects
             const playerA_details = gameState.teams['A'].players.map(p => ({ name: p.name, role: p.role }));
             const playerB_details = gameState.teams['B'].players.map(p => ({ name: p.name, role: p.role }));
 
-            // Re-initialize game state structure to clear all volatile match data
-            gameState = getInitialGameState();
+            gameState = getInitialGameState(); // Re-initialize to clear all volatile match data
 
             // Restore persistent settings
             gameState.userTeamId = userTeamId;
@@ -347,18 +377,22 @@ Player Name Y (Batter)
             gameState.teams['A'].name = teamA_name;
             gameState.teams['B'].name = teamB_name;
             gameState.selectedOvers = selectedOvers;
+            gameState.gameMode = gameMode;
+            // Restore oversPerInnings based on current gameMode
+            gameState.oversPerInnings = (gameState.gameMode === 'test_match') ? TEST_MATCH_OVERS : gameState.selectedOvers;
 
-            // Restore player names and roles, then reset their match-specific stats
+
+            // Restore player names and roles, then reset their match-specific stats (match totals & current innings)
             gameState.teams['A'].players = playerA_details.map((p, idx) => getNewPlayerStats(p.name, p.role));
             gameState.teams['B'].players = playerB_details.map((p, idx) => getNewPlayerStats(p.name, p.role));
 
-            gameState.teams['A'].battingScorecard = [];
-            gameState.teams['B'].battingScorecard = [];
-            gameState.teams['A'].inningsScore = null;
-            gameState.teams['B'].inningsScore = null;
+            gameState.teams['A'].inningsScores = [];
+            gameState.teams['B'].inningsScores = [];
+            gameState.teams['A'].inningsScorecardHistory = [];
+            gameState.teams['B'].inningsScorecardHistory = [];
 
-            gameState.score.bowling.currentBowlerIndex = 5; // Reset bowler index
-            gameState.score.bowling.lastBowlerIndex = -1; // Reset for new innings
+            gameState.score.bowling.currentBowlerIndex = 5;
+            gameState.score.bowling.lastBowlerIndex = -1;
 
             saveState();
             navigateTo('start');
@@ -417,18 +451,40 @@ Player Name Y (Batter)
         const renderStartMenu = () => `
             <div class="max-w-xl mx-auto p-6 bg-white card text-center">
                 <h2 class="text-4xl font-extrabold mb-8 text-cricket-green">Welcome to Dice Cricket</h2>
-                <div class="space-y-4">
-                    <div class="flex items-center justify-center space-x-4 mb-6">
-                        <label for="overs-select" class="text-lg font-semibold text-gray-700">Select Overs:</label>
+
+                <div class="mb-6">
+                    <h3 class="text-xl font-bold mb-4 text-gray-700">Select Game Mode:</h3>
+                    <div class="flex justify-center space-x-6 mb-4">
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="gameMode" value="limited_overs" class="form-radio h-5 w-5 text-cricket-green"
+                                   onchange="setGameMode(this.value)" ${gameState.gameMode === 'limited_overs' ? 'checked' : ''}>
+                            <span class="ml-2 text-lg font-semibold">Limited Overs</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="gameMode" value="test_match" class="form-radio h-5 w-5 text-cricket-green"
+                                   onchange="setGameMode(this.value)" ${gameState.gameMode === 'test_match' ? 'checked' : ''}>
+                            <span class="ml-2 text-lg font-semibold">Unlimited Overs (Test Match)</span>
+                        </label>
+                    </div>
+
+                    <div id="limited-overs-options" class="${gameState.gameMode === 'limited_overs' ? '' : 'hidden'} flex items-center justify-center space-x-4">
+                        <label for="overs-select" class="text-lg font-semibold text-gray-700">Overs per Innings:</label>
                         <select id="overs-select" class="p-2 border rounded-md shadow-sm focus:border-cricket-gold focus:ring focus:ring-cricket-gold focus:ring-opacity-50"
                                 onchange="updateSelectedOvers(this.value)">
-                            ${OVERS_OPTIONS.map(overs => `
+                            ${LIMITED_OVERS_OPTIONS.map(overs => `
                                 <option value="${overs}" ${gameState.selectedOvers == overs ? 'selected' : ''}>${overs} Overs</option>
                             `).join('')}
                         </select>
                     </div>
+                    <div id="test-match-info" class="${gameState.gameMode === 'test_match' ? '' : 'hidden'} text-lg font-semibold text-gray-700 mt-2">
+                        Test Match: ${TEST_MATCH_OVERS} Overs per Innings (4 Innings Total)
+                    </div>
+                </div>
+
+                <div class="space-y-4">
                     <button onclick="startNewMatch()" class="btn-primary w-full text-xl">
-                        Start New Match (${gameState.selectedOvers} Overs)
+                        Start New Match
+                        ${gameState.gameMode === 'limited_overs' ? `(${gameState.oversPerInnings} Overs)` : `(Test Match)`}
                     </button>
                     <button onclick="navigateTo('team_editor')" class="bg-blue-600 text-white font-bold py-3 px-6 rounded-xl w-full text-xl hover:bg-blue-700 transition">
                         Edit Teams & Names
@@ -534,7 +590,7 @@ Player Name Y (Batter)
                 const winnerName = gameState.tossWinner === 'user' ? userTeamName : compTeamName;
                 const tossDecision = gameState.tossDecision;
                 const decisionText = tossDecision === 'bat' ? 'will BAT first' : 'will BOWL first';
-                const nextActionTeamName = gameState.isUserBatting ? userTeamName : compTeamName;
+                const nextActionTeamName = gameState.currentBattingTeamId ? gameState.teams[gameState.currentBattingTeamId].name : 'N/A';
 
                 content = `
                     <h3 class="text-3xl font-extrabold mb-6 text-cricket-gold">Toss Result!</h3>
@@ -557,15 +613,13 @@ Player Name Y (Batter)
         };
 
         const renderMatchScreen = () => {
-            const battingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
-            const bowlingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId;
-            const battingTeam = gameState.teams[battingTeamId];
+            const battingTeam = gameState.teams[gameState.currentBattingTeamId];
+            const bowlingTeamId = (gameState.currentBattingTeamId === gameState.userTeamId) ? gameState.compTeamId : gameState.userTeamId;
             const bowlingTeam = gameState.teams[bowlingTeamId];
 
             const score = gameState.score.batting;
-            // Get batsman details, with fallbacks for safety
-            const currentBatsmanOnStrike = battingTeam.players[score.onStrikePlayerIndex] || { name: 'N/A', R: 0, B: 0 };
-            const currentBatsmanOffStrike = battingTeam.players[score.offStrikePlayerIndex] || { name: 'N/A', R: 0, B: 0 };
+            const currentBatsmanOnStrike = battingTeam.players[score.onStrikePlayerIndex] || { name: 'N/A', currentInningsR: 0, currentInningsB: 0 };
+            const currentBatsmanOffStrike = battingTeam.players[score.offStrikePlayerIndex] || { name: 'N/A', currentInningsR: 0, currentInningsB: 0 };
             const currentBowler = bowlingTeam.players[gameState.score.bowling.currentBowlerIndex] || { name: 'N/A', O: 0, Balls: 0, Runs: 0, W: 0, Econ: 0.0 };
 
             const displayOvers = `${score.overs}.${score.balls}`;
@@ -592,7 +646,7 @@ Player Name Y (Batter)
             return `
                 <div class="max-w-5xl mx-auto">
                     <h2 class="text-4xl font-extrabold mb-6 text-center text-cricket-green">
-                        Innings ${gameState.innings} - ${battingTeam.name} Batting
+                        Innings ${gameState.innings} ${gameState.gameMode === 'test_match' ? 'of 4' : ''} - ${battingTeam.name} Batting
                     </h2>
                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -600,24 +654,34 @@ Player Name Y (Batter)
                         <div class="lg:col-span-1 bg-white p-6 card">
                             <h3 class="text-2xl font-bold mb-4 border-b pb-2 text-cricket-green">Live Score</h3>
                             <p class="text-5xl font-extrabold mb-2">${score.runs}/${score.wickets} ${targetDisplay}</p>
-                            <p class="text-xl text-gray-600 mb-6">Overs: ${displayOvers} / ${gameState.selectedOvers}.0</p>
+                            <p class="text-xl text-gray-600 mb-6">Overs: ${displayOvers} / ${gameState.oversPerInnings}.0</p>
 
                             <div class="space-y-3">
-                                <p class="text-lg"><strong>On Strike:</strong> ${currentBatsmanOnStrike.name} <span class="font-mono text-cricket-red">(${currentBatsmanOnStrike.R} R, ${currentBatsmanOnStrike.B} B)</span></p>
-                                <p class="text-lg"><strong>Non-Striker:</strong> ${currentBatsmanOffStrike.name} <span class="font-mono text-gray-500">(${currentBatsmanOffStrike.R} R, ${currentBatsmanOffStrike.B} B)</span></p>
+                                <p class="text-lg"><strong>On Strike:</strong> ${currentBatsmanOnStrike.name} <span class="font-mono text-cricket-red">(${currentBatsmanOnStrike.currentInningsR} R, ${currentBatsmanOnStrike.currentInningsB} B)</span></p>
+                                <p class="text-lg"><strong>Non-Striker:</strong> ${currentBatsmanOffStrike.name} <span class="font-mono text-gray-500">(${currentBatsmanOffStrike.currentInningsR} R, ${currentBatsmanOffStrike.currentInningsB} B)</span></p>
                                 <p class="text-lg"><strong>Bowler:</strong> ${currentBowler.name} <span class="font-mono text-gray-500">(${currentBowler.O}.${currentBowler.Balls % 6} - ${currentBowler.W}/${currentBowler.Runs})</span></p>
                             </div>
                             <div id="action-message" class="mt-4 p-3 bg-blue-100 text-blue-800 rounded-lg text-sm font-medium">
                                 Waiting for the next roll...
                             </div>
+                            ${gameState.gameMode === 'test_match' && gameState.testMatchState.currentLeadTrailMessage ? `
+                                <div class="mt-4 p-3 bg-yellow-100 text-yellow-800 rounded-lg text-sm font-medium">
+                                    ${gameState.testMatchState.currentLeadTrailMessage}
+                                </div>
+                            ` : ''}
                         </div>
 
                         <!-- Dice & Action Panel (Center) -->
                         <div class="lg:col-span-2 bg-white p-6 card flex flex-col items-center">
                             ${diceContainer}
-                            <button id="roll-button" onclick="handleRoll()" class="btn-primary w-full mt-6 text-2xl">
-                                ROLL THE DICE!
-                            </button>
+                            <div class="flex flex-col sm:flex-row gap-4 w-full mt-6">
+                                <button id="roll-button" onclick="handleRoll()" class="btn-primary flex-grow text-2xl ${gameState.isSimulating || gameState.matchResult ? 'opacity-50 cursor-not-allowed' : ''}" ${gameState.isSimulating || gameState.matchResult ? 'disabled' : ''}>
+                                    ROLL THE DICE!
+                                </button>
+                                <button id="simulate-button" onclick="${gameState.isSimulating ? 'stopSimulation()' : 'simulateMatch()'}" class="btn-primary bg-purple-600 hover:bg-purple-700 flex-grow text-2xl ${gameState.matchResult ? 'opacity-50 cursor-not-allowed' : ''}" ${gameState.matchResult ? 'disabled' : ''}>
+                                    ${gameState.isSimulating ? 'Stop Simulation' : 'Simulate Match'}
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Full Scoreboard (Bottom) -->
@@ -630,37 +694,37 @@ Player Name Y (Batter)
         };
 
         const renderScoreboardTable = (battingTeam) => {
-            // Display players who have come to bat, up to the next player in queue
+            // Display players who have come to bat in the CURRENT innings, up to the next player in queue
             const players = battingTeam.players.slice(0, gameState.score.batting.nextPlayerIndex);
             const tableRows = players.map(player => `
-                <tr class="text-gray-700 ${player.out ? 'bg-red-50' : (player.B > 0 && !player.out ? 'bg-green-50' : 'bg-gray-50')}">
-                    <td class="px-4 py-2 font-medium">${player.name} <span class="text-xs text-gray-500">(${player.role})</span> ${player.out ? '<span class="text-cricket-red font-bold">(OUT)</span>' : (player.B > 0 ? '<span class="text-cricket-green font-bold">(NOT OUT)</span>' : '')}</td>
-                    <td class="px-4 py-2 text-right">${player.R}</td>
-                    <td class="px-4 py-2 text-right">${player.B}</td>
-                    <td class="px-4 py-2 text-right">${player.Fours}</td>
-                    <td class="px-4 py-2 text-right">${player.Sixes}</td>
-                    <td class="px-4 py-2 text-right">${player.SR}</td>
+                <tr class="text-gray-700 ${player.currentInningsOut ? 'bg-red-50' : (player.currentInningsB > 0 && !player.currentInningsOut ? 'bg-green-50' : 'bg-gray-50')}">
+                    <td class="px-4 py-2 font-medium">${player.name} <span class="text-xs text-gray-500">(${player.role})</span> ${player.currentInningsOut ? '<span class="text-cricket-red font-bold">(OUT)</span>' : (player.currentInningsB > 0 ? '<span class="text-cricket-green font-bold">(NOT OUT)</span>' : '')}</td>
+                    <td class="px-4 py-2 text-right">${player.currentInningsR}</td>
+                    <td class="px-4 py-2 text-right">${player.currentInningsB}</td>
+                    <td class="px-4 py-2 text-right">${player.currentInningsFours}</td>
+                    <td class="px-4 py-2 text-right">${player.currentInningsSixes}</td>
+                    <td class="px-4 py-2 text-right">${player.currentInningsSR}</td>
                 </tr>
             `).join('');
 
-            // Get bowling team's top bowler stats for the current innings
-            const bowlingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId;
-            const bowlers = gameState.teams[bowlingTeamId].players.filter(p => p.W > 0 || p.Runs > 0 || p.Balls > 0); // Include if they bowled any balls
-            const topBowlers = bowlers.sort((a, b) => b.W - a.W || a.Runs - b.Runs).slice(0, 3); // Top 3 bowlers
+            // Get bowling team's top bowler stats for the current match (accumulated)
+            const bowlingTeamId = (gameState.currentBattingTeamId === gameState.userTeamId) ? gameState.compTeamId : gameState.userTeamId;
+            const bowlers = gameState.teams[bowlingTeamId].players.filter(p => p.W > 0 || p.Runs > 0 || p.Balls > 0);
+            const topBowlers = bowlers.sort((a, b) => b.W - a.W || a.Runs - b.Runs).slice(0, 3);
             const bowlingRows = topBowlers.map(bowler => `
                 <tr class="bg-blue-50">
                     <td class="px-4 py-2 font-medium">${bowler.name} <span class="text-xs text-gray-500">(${bowler.role})</span></td>
                     <td class="px-4 py-2 text-right">${bowler.O}.${bowler.Balls % 6}</td>
                     <td class="px-4 py-2 text-right">${bowler.Runs}</td>
                     <td class="px-4 py-2 text-right">${bowler.W}</td>
-                    <td class="px-4 py-2 text-right">${bowler.Econ}</td>
+                    <td class="px-4 py-2 text-right">${(bowler.Balls > 0) ? (bowler.Runs / (bowler.Balls / 6)).toFixed(2) : 0.0}</td>
                 </tr>
             `).join('');
 
 
             return `
                 <div class="bg-white p-6 card mt-6">
-                    <h3 class="text-xl font-bold mb-4 border-b pb-2 text-cricket-green">${battingTeam.name} Batting Scorecard</h3>
+                    <h3 class="text-xl font-bold mb-4 border-b pb-2 text-cricket-green">${battingTeam.name} Batting Scorecard (Innings ${gameState.innings})</h3>
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-100">
@@ -679,7 +743,7 @@ Player Name Y (Batter)
                         </table>
                     </div>
 
-                    <h3 class="text-xl font-bold mt-6 mb-4 border-b pb-2 text-cricket-green">Bowling Analysis (Current Opponent)</h3>
+                    <h3 class="text-xl font-bold mt-6 mb-4 border-b pb-2 text-cricket-green">Bowling Analysis (Overall Match)</h3>
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-100">
@@ -706,46 +770,68 @@ Player Name Y (Batter)
         /** Sets up the game state for a new match. */
         const startNewMatch = () => {
             resetMatchState(); // Reset only match data
+            gameState.oversPerInnings = (gameState.gameMode === 'test_match') ? TEST_MATCH_OVERS : gameState.selectedOvers;
             navigateTo('toss');
         };
 
         /** Updates the selected overs in gameState */
         const updateSelectedOvers = (value) => {
             gameState.selectedOvers = parseInt(value, 10);
+            gameState.oversPerInnings = parseInt(value, 10); // Update actual overs for current mode if limited overs
             saveState();
             renderScreen(); // Re-render to update the button text
+        };
+
+        /** Sets the game mode (limited overs or test match). */
+        const setGameMode = (mode) => {
+            gameState.gameMode = mode;
+            gameState.oversPerInnings = (mode === 'test_match') ? TEST_MATCH_OVERS : gameState.selectedOvers;
+            saveState();
+            renderScreen(); // Re-render to show/hide overs selection
         };
 
         /** Performs the initial toss and sets up the first innings. */
         const performToss = () => {
             const winner = Math.random() < 0.5 ? 'user' : 'comp';
-
             gameState.tossWinner = winner;
 
             if (winner === 'comp') {
-                // Computer makes a random decision
                 gameState.tossDecision = Math.random() < 0.5 ? 'bat' : 'bowl';
-                // Determine who bats first based on comp's decision
                 gameState.isUserBatting = (gameState.tossDecision === 'bowl'); // If comp bowls, user bats
+                gameState.currentBattingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
             }
             // If user wins, decision is deferred until userChooseBat/Bowl
 
-            // Set up initial bowler for the first innings (player 6, index 5)
-            // Reset lastBowlerIndex at the start of a new match/innings
+            if (gameState.tossDecision) { // If a decision has been made
+                // For Test Match, determine team1Id and team2Id
+                if (gameState.gameMode === 'test_match') {
+                    if (gameState.isUserBatting) {
+                        gameState.testMatchState.team1Id = gameState.userTeamId;
+                        gameState.testMatchState.team2Id = gameState.compTeamId;
+                    } else {
+                        gameState.testMatchState.team1Id = gameState.compTeamId;
+                        gameState.testMatchState.team2Id = gameState.userTeamId;
+                    }
+                }
+            }
+
             gameState.score.bowling.currentBowlerIndex = 5;
             gameState.score.bowling.lastBowlerIndex = -1;
-
-
-            // Render updated toss screen
+            saveState();
             renderScreen();
         };
 
         /** User chooses to bat after winning the toss. */
         const userChooseBat = () => {
             gameState.tossDecision = 'bat';
-            gameState.isUserBatting = true; // User bats first
-            gameState.score.bowling.currentBowlerIndex = 5; // Default initial bowler
-            gameState.score.bowling.lastBowlerIndex = -1; // Reset
+            gameState.isUserBatting = true;
+            gameState.currentBattingTeamId = gameState.userTeamId; // User bats first
+            if (gameState.gameMode === 'test_match') {
+                gameState.testMatchState.team1Id = gameState.userTeamId;
+                gameState.testMatchState.team2Id = gameState.compTeamId;
+            }
+            gameState.score.bowling.currentBowlerIndex = 5;
+            gameState.score.bowling.lastBowlerIndex = -1;
             saveState();
             renderScreen();
         };
@@ -753,22 +839,26 @@ Player Name Y (Batter)
         /** User chooses to bowl after winning the toss. */
         const userChooseBowl = () => {
             gameState.tossDecision = 'bowl';
-            gameState.isUserBatting = false; // Computer bats first
-            gameState.score.bowling.currentBowlerIndex = 5; // Default initial bowler
-            gameState.score.bowling.lastBowlerIndex = -1; // Reset
+            gameState.isUserBatting = false;
+            gameState.currentBattingTeamId = gameState.compTeamId; // Computer bats first
+            if (gameState.gameMode === 'test_match') {
+                gameState.testMatchState.team1Id = gameState.compTeamId;
+                gameState.testMatchState.team2Id = gameState.userTeamId;
+            }
+            gameState.score.bowling.currentBowlerIndex = 5;
+            gameState.score.bowling.lastBowlerIndex = -1;
             saveState();
             renderScreen();
         };
 
         /** Selects the next bowler based on role and overs bowled. */
         const selectNextBowler = () => {
-            const bowlingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId;
+            const bowlingTeamId = (gameState.currentBattingTeamId === gameState.userTeamId) ? gameState.compTeamId : gameState.userTeamId;
             const bowlingTeam = gameState.teams[bowlingTeamId];
-            const lastBowlerIndexForRotation = gameState.score.bowling.currentBowlerIndex; // The bowler who just completed the over
+            const lastBowlerIndexForRotation = gameState.score.bowling.currentBowlerIndex;
 
             const eligibleBowlersInfo = [];
             bowlingTeam.players.forEach((player, index) => {
-                // Only 'Bowler' and 'All Rounder' roles are eligible to bowl
                 if (player.role === 'Bowler' || player.role === 'All Rounder') {
                     eligibleBowlersInfo.push({ index: index, player: player });
                 }
@@ -776,35 +866,25 @@ Player Name Y (Batter)
 
             if (eligibleBowlersInfo.length === 0) {
                 console.warn("No eligible bowlers (Bowler or All Rounder) found in the team. Assigning first player as bowler as fallback.");
-                // As a last resort, pick the first player if no defined bowlers
                 gameState.score.bowling.currentBowlerIndex = 0;
                 gameState.score.bowling.lastBowlerIndex = lastBowlerIndexForRotation;
                 return;
             }
 
-            // Sort eligible bowlers by overs bowled in current innings (least overs first)
-            // This gives preference to bowlers who have bowled fewer overs.
-            eligibleBowlersInfo.sort((a, b) => a.player.O - b.player.O);
+            eligibleBowlersInfo.sort((a, b) => a.player.O - b.player.O); // Sort by total match overs bowled
 
             let nextBowlerIndex = -1;
-
-            // Find the next bowler:
-            // 1. Must be eligible.
-            // 2. Ideally, should not be the bowler who just completed the over.
             for (const bowlerInfo of eligibleBowlersInfo) {
                 if (bowlerInfo.index !== lastBowlerIndexForRotation) {
                     nextBowlerIndex = bowlerInfo.index;
-                    break; // Found the best candidate
+                    break;
                 }
             }
 
-            // If all eligible bowlers have bowled the previous over (implies only one eligible bowler),
-            // or if somehow no other bowler was found, just pick the one with the least overs.
             if (nextBowlerIndex === -1 && eligibleBowlersInfo.length > 0) {
                 nextBowlerIndex = eligibleBowlersInfo[0].index;
             } else if (nextBowlerIndex === -1) {
-                 // Should be caught by the earlier eligibleBowlersInfo.length === 0 check, but a final safeguard
-                 nextBowlerIndex = 0; // Absolute fallback if somehow still -1
+                 nextBowlerIndex = 0;
             }
 
             gameState.score.bowling.lastBowlerIndex = lastBowlerIndexForRotation;
@@ -812,90 +892,111 @@ Player Name Y (Batter)
         };
 
 
-        /** Handles the logic for a single ball (dice roll). */
-        const handleRoll = () => {
-            // Disable roll button during animation/processing
-            const rollButton = document.getElementById('roll-button');
-            if (rollButton) rollButton.disabled = true;
-
-            const actionMessage = document.getElementById('action-message');
-            if (actionMessage) actionMessage.textContent = 'Rolling...';
-
-            // 1. Dice Roll
+        /** Handles the logic for a single ball (dice roll). Returns true if innings ended, false otherwise. */
+        const handleRoll = async () => {
             const batRoll = rollDice();
             const bowlRoll = rollDice();
             const isOut = batRoll === bowlRoll;
             const runsScored = isOut ? 0 : batRoll;
 
-            // 2. Animate Dice
-            const batDiceContainer = document.getElementById('batting-dice');
-            const bowlDiceContainer = document.getElementById('bowling-dice');
+            // Dice animation visualization - only if NOT simulating
+            if (!gameState.isSimulating) {
+                const batDiceContainer = document.getElementById('batting-dice');
+                const bowlDiceContainer = document.getElementById('bowling-dice');
 
-            if (batDiceContainer && bowlDiceContainer) {
-                // Reset to 1 before animation starts for visual consistency
-                batDiceContainer.innerHTML = getDiceHtml(1);
-                bowlDiceContainer.innerHTML = getDiceHtml(1);
-
-                batDiceContainer.classList.add('roll-animation');
-                bowlDiceContainer.classList.add('roll-animation');
-            }
-
-            setTimeout(() => {
+                if (batDiceContainer && bowlDiceContainer) {
+                    batDiceContainer.innerHTML = getDiceHtml(1);
+                    bowlDiceContainer.innerHTML = getDiceHtml(1);
+                    batDiceContainer.classList.add('roll-animation');
+                    bowlDiceContainer.classList.add('roll-animation');
+                }
+                await new Promise(resolve => setTimeout(resolve, 700)); // Wait for animation
                 if (batDiceContainer && bowlDiceContainer) {
                     batDiceContainer.classList.remove('roll-animation');
                     bowlDiceContainer.classList.remove('roll-animation');
                     batDiceContainer.innerHTML = getDiceHtml(batRoll);
                     bowlDiceContainer.innerHTML = getDiceHtml(bowlRoll);
                 }
+            }
 
-                // 3. Update Score
-                updateScore(isOut, runsScored);
 
-                // 4. Update UI/Re-enable Button
-                if (actionMessage) {
-                    if (isOut) {
-                        actionMessage.innerHTML = `<span class="font-bold text-cricket-red">OUT!</span> Both rolled ${batRoll}.`;
-                    } else {
-                        actionMessage.innerHTML = `<span class="font-bold text-cricket-green">Run!</span> Batsman rolled ${batRoll} and scores ${runsScored}.`;
-                    }
+            updateScore(isOut, runsScored);
+
+            const actionMessage = document.getElementById('action-message');
+            if (actionMessage) {
+                if (isOut) {
+                    actionMessage.innerHTML = `<span class="font-bold text-cricket-red">OUT!</span> Both rolled ${batRoll}.`;
+                } else {
+                    actionMessage.innerHTML = `<span class="font-bold text-cricket-green">Run!</span> Batsman rolled ${batRoll} and scores ${runsScored}.`;
                 }
+            }
 
-                // Check for innings/match end *after* score update
-                checkInningsEnd();
-                renderScreen();
+            // checkInningsEnd will trigger endInnings (which in turn calls navigateTo or showInningsBreakMessage)
+            const inningsEnded = checkInningsEnd(); // Returns true if innings ended, false otherwise
+            
+            return inningsEnded;
+        };
 
-                if (rollButton && !gameState.matchResult) rollButton.disabled = false;
+        /** Checks if the innings or match has ended. Returns true if innings ended, false otherwise. */
+        const checkInningsEnd = () => {
+            const score = gameState.score.batting;
 
-            }, 700); // Wait for animation
+            const allOut = score.wickets === 10;
+            const oversComplete = score.overs === gameState.oversPerInnings;
+
+            let targetChased = false;
+            if (gameState.target > 0 && score.runs >= gameState.target) {
+                if (gameState.gameMode === 'limited_overs' && gameState.innings === 2) {
+                    targetChased = true;
+                } else if (gameState.gameMode === 'test_match' && gameState.innings === 4) {
+                    targetChased = true;
+                }
+            }
+
+            if (allOut || oversComplete || targetChased) {
+                // Ensure last batsman is marked as having played in scorecard slice
+                if (score.nextPlayerIndex <= 11) score.nextPlayerIndex = 11;
+                endInnings(); // This will trigger navigateTo('summary') or showInningsBreakMessage()
+                return true; // Indicate innings ended
+            }
+            // If innings did not end, we don't call renderScreen here.
+            // For manual play, this will be handled after handleRoll. For simulation, simulateMatch will.
+            return false; // Indicate innings did not end
         };
 
         /** Updates the central game score based on the dice outcome and handles two batsmen logic. */
         const updateScore = (isOut, runsScored) => {
             const score = gameState.score.batting;
-            const battingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
-            const bowlingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId;
-            const battingTeam = gameState.teams[battingTeamId];
+            const battingTeam = gameState.teams[gameState.currentBattingTeamId];
+            const bowlingTeamId = (gameState.currentBattingTeamId === gameState.userTeamId) ? gameState.compTeamId : gameState.userTeamId;
             const bowlingTeam = gameState.teams[bowlingTeamId];
 
-            // Get current batsman (who rolled) and bowler
             const currentBatsmanOnStrike = battingTeam.players[score.onStrikePlayerIndex];
             const bowler = bowlingTeam.players[gameState.score.bowling.currentBowlerIndex];
 
-            // 1. Update Balls Faced for the on-strike batsman & bowler
-            currentBatsmanOnStrike.B += 1;
-            bowler.Balls += 1;
+            // Update Current Innings Stats for Batsman
+            currentBatsmanOnStrike.currentInningsB += 1;
+            currentBatsmanOnStrike.currentInningsR += runsScored;
+            if (runsScored === 4) currentBatsmanOnStrike.currentInningsFours += 1;
+            if (runsScored === 6) currentBatsmanOnStrike.currentInningsSixes += 1;
+            currentBatsmanOnStrike.currentInningsSR = currentBatsmanOnStrike.currentInningsB > 0 ? ((currentBatsmanOnStrike.currentInningsR / currentBatsmanOnStrike.currentInningsB) * 100).toFixed(2) : 0.0;
 
-            // 2. Update Runs for batsman, bowler, and total team score
+            // Update Match Total Stats for Batsman (for career records)
+            currentBatsmanOnStrike.B += 1;
             currentBatsmanOnStrike.R += runsScored;
-            bowler.Runs += runsScored; // Bowler concedes runs regardless if out or not
             if (runsScored === 4) currentBatsmanOnStrike.Fours += 1;
             if (runsScored === 6) currentBatsmanOnStrike.Sixes += 1;
-            currentBatsmanOnStrike.SR = currentBatsmanOnStrike.B > 0 ? ((currentBatsmanOnStrike.R / currentBatsmanOnStrike.B) * 100).toFixed(2) : 0.0;
-            score.runs += runsScored; // Total team runs
 
-            // 3. Handle Wicket
+            // Update Bowler's Match Total Stats
+            bowler.Balls += 1;
+            bowler.Runs += runsScored;
+
+            // Update Team Score for current innings
+            score.runs += runsScored;
+
+            // Handle Wicket
             if (isOut) {
-                currentBatsmanOnStrike.out = true;
+                currentBatsmanOnStrike.currentInningsOut = true; // Set current innings out status
                 score.wickets += 1;
                 bowler.W += 1;
 
@@ -903,21 +1004,17 @@ Player Name Y (Batter)
                 if (score.nextPlayerIndex < 11) {
                     score.onStrikePlayerIndex = score.nextPlayerIndex; // New batsman takes strike
                     score.nextPlayerIndex++;
-                } else {
-                    // All out scenario - will be caught by checkInningsEnd
                 }
             } else {
-                // Not out, check for strike rotation on odd runs (excluding 0)
                 if (runsScored % 2 !== 0 && runsScored > 0) {
-                    // Swap on-strike and off-strike batsmen
                     [score.onStrikePlayerIndex, score.offStrikePlayerIndex] = [score.offStrikePlayerIndex, score.onStrikePlayerIndex];
                 }
             }
 
-            // 4. Update Ball Count for the overall innings
+            // Update Ball Count for the overall innings
             score.balls += 1;
 
-            // 5. Check for End of Over
+            // Check for End of Over
             if (score.balls === 6) {
                 score.overs += 1;
                 score.balls = 0;
@@ -925,106 +1022,280 @@ Player Name Y (Batter)
                 // Swap strike at the end of the over
                 [score.onStrikePlayerIndex, score.offStrikePlayerIndex] = [score.offStrikePlayerIndex, score.onStrikePlayerIndex];
 
-                // Change Bowler using the new selection logic
+                // Change Bowler
                 selectNextBowler();
             }
 
-            // Update Bowler's O and Econ after all changes
+            // Update Bowler's match total Overs and Econ
             bowler.O = Math.floor(bowler.Balls / 6);
             const totalBowledOversDecimal = bowler.O + (bowler.Balls % 6) / 6;
 
             if (totalBowledOversDecimal > 0) {
                 bowler.Econ = (bowler.Runs / totalBowledOversDecimal).toFixed(2);
             } else {
-                bowler.Econ = 0.0; // No balls bowled yet
+                bowler.Econ = 0.0;
             }
-
-
-            // Update team overall scorecard view to include new players who have come to bat
-            battingTeam.battingScorecard = battingTeam.players.slice(0, score.nextPlayerIndex);
 
             saveState();
         };
 
-        /** Checks if the innings or match has ended. */
-        const checkInningsEnd = () => {
+        /** Finalizes the current innings score and prepares for the next. */
+        const endInnings = () => {
+            const currentBattingTeam = gameState.teams[gameState.currentBattingTeamId];
             const score = gameState.score.batting;
 
-            // Condition 1: All wickets fallen (10 wickets)
-            const allOut = score.wickets === 10;
+            // Snapshot player stats for the completed innings
+            const inningsPlayersSnapshot = currentBattingTeam.players.slice(0, score.nextPlayerIndex).map(p => ({
+                name: p.name,
+                role: p.role,
+                R: p.currentInningsR,
+                B: p.currentInningsB,
+                Fours: p.currentInningsFours,
+                Sixes: p.currentInningsSixes,
+                SR: p.currentInningsSR,
+                out: p.currentInningsOut
+            }));
+            currentBattingTeam.inningsScorecardHistory.push(inningsPlayersSnapshot);
 
-            // Condition 2: Max overs bowled
-            const oversComplete = score.overs === gameState.selectedOvers;
+            // Store final innings score
+            currentBattingTeam.inningsScores.push({
+                runs: score.runs,
+                wickets: score.wickets,
+                overs: score.overs,
+                balls: score.balls,
+                inningsNum: gameState.innings
+            });
 
-            // Condition 3 (Innings 2 only): Target chased
-            const targetChased = gameState.innings === 2 && gameState.target > 0 && score.runs >= gameState.target;
-
-            if (allOut || oversComplete || targetChased) {
-                // Ensure last batsman is marked as having played in scorecard slice
-                if (score.nextPlayerIndex <= 11) score.nextPlayerIndex = 11;
-                endInnings();
+            if (gameState.gameMode === 'limited_overs') {
+                handleLimitedOversInningsEnd();
+            } else { // Test Match
+                handleTestMatchInningsEnd();
             }
         };
 
-        /** Finalizes the current innings score and prepares for the next. */
-        const endInnings = () => {
-            const currentBattingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
-            const currentTeam = gameState.teams[currentBattingTeamId];
-
-            // 1. Store Final Scorecard for this innings
-            currentTeam.inningsScore = {
-                runs: gameState.score.batting.runs,
-                wickets: gameState.score.batting.wickets,
-                overs: gameState.score.batting.overs,
-                balls: gameState.score.batting.balls
-            };
-            // Ensure final scorecard reflects all who played
-            currentTeam.battingScorecard = currentTeam.players.slice(0, gameState.score.batting.nextPlayerIndex);
-
-            // 2. Check if it's the end of the match
+        const handleLimitedOversInningsEnd = () => {
             if (gameState.innings === 2) {
                 endMatch();
                 return;
             }
 
-            // 3. Prepare for Innings 2 (set target and swap roles)
+            // Prepare for Innings 2
             gameState.innings = 2;
-            gameState.target = gameState.score.batting.runs + 1; // Target is 1 run more than Innings 1 score
-            gameState.isUserBatting = !gameState.isUserBatting; // Swap roles for next innings
+            gameState.target = gameState.score.batting.runs + 1;
+            gameState.isUserBatting = !gameState.isUserBatting;
+            gameState.currentBattingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
 
-            // Reset score tracker for new innings
+            resetCurrentInningsScoreState();
+            showInningsBreakMessage();
+        };
+
+        const handleTestMatchInningsEnd = () => {
+            const team1Id = gameState.testMatchState.team1Id;
+            const team2Id = gameState.testMatchState.team2Id;
+
+            // --- Check for immediate match end conditions ---
+
+            // Scenario 1: After Innings 2 (Team 2's 1st innings) - Potential win by an innings for Team 1
+            if (gameState.innings === 2) {
+                const team1Innings1Score = gameState.teams[team1Id].inningsScores[0]?.runs || 0;
+                const team2Innings1Score = gameState.teams[team2Id].inningsScores[0]?.runs || 0; // Team 2's recently completed 1st innings
+
+                if (team2Innings1Score < team1Innings1Score) {
+                     // Team 1 wins by an innings (Team 2 failed to match Team 1's 1st innings total)
+                    gameState.testMatchState.matchFinishedByInningsWin = true;
+                    gameState.matchResult = `${gameState.teams[team1Id].name} won by an innings and ${team1Innings1Score - team2Innings1Score} runs!`;
+                    console.log("TEST MATCH ENDED (Innings 2): Win by an innings for Team 1.");
+                    endMatch();
+                    return; // Crucial: Exit after ending the match
+                }
+            }
+
+            // Scenario 2: After Innings 3 (Team 1's 2nd innings) - Potential win by an innings for Team 2 (if Team 1's cumulative is too low)
+            if (gameState.innings === 3) {
+                const team1TotalRuns = (gameState.teams[team1Id].inningsScores[0]?.runs || 0) + (gameState.teams[team1Id].inningsScores[1]?.runs || 0);
+                const team2FirstInningsRuns = (gameState.teams[team2Id].inningsScores[0]?.runs || 0);
+
+                if (team1TotalRuns <= team2FirstInningsRuns) {
+                    // Team 2 wins by an innings (Team 1's total from two innings couldn't surpass Team 2's first innings)
+                    gameState.testMatchState.matchFinishedByInningsWin = true;
+                    gameState.matchResult = `${gameState.teams[team2Id].name} won by an innings and ${team2FirstInningsRuns - team1TotalRuns} runs!`;
+                    console.log("TEST MATCH ENDED (Innings 3): Win by an innings for Team 2.");
+                    endMatch();
+                    return; // Crucial: Exit after ending the match
+                }
+            }
+
+            // Scenario 3: After Innings 4 (Team 2's 2nd innings) - Final result calculation
+            if (gameState.innings === 4) {
+                console.log("TEST MATCH ENDED (Innings 4): Final results.");
+                endMatch();
+                return; // Crucial: Exit after ending the match
+            }
+
+            // --- If match not ended, prepare for next innings ---
+            gameState.innings++; // Progress to the next innings (will be 2, 3, or 4)
+
+            // Reset current innings score state for the next batting team
+            resetCurrentInningsScoreState();
+
+            // Determine next batting team and set `isUserBatting` accordingly
+            const battingOrder = [team1Id, team2Id, team1Id, team2Id];
+            gameState.currentBattingTeamId = battingOrder[gameState.innings - 1];
+            gameState.isUserBatting = (gameState.currentBattingTeamId === gameState.userTeamId);
+
+            // Calculate target for Innings 4 if we are moving to it
+            if (gameState.innings === 4) {
+                const team1TotalRuns = (gameState.teams[team1Id].inningsScores[0]?.runs || 0) + (gameState.teams[team1Id].inningsScores[1]?.runs || 0);
+                const team2FirstInningsRuns = (gameState.teams[team2Id].inningsScores[0]?.runs || 0);
+                gameState.target = team1TotalRuns - team2FirstInningsRuns + 1;
+                if (gameState.target <= 0) gameState.target = 1; // Safety net for target
+            } else {
+                gameState.target = 0; // No target for innings 1, 2, 3
+            }
+
+            // Update lead/trail message
+            gameState.testMatchState.currentLeadTrailMessage = calculateTestLeadTrailMessage();
+
+            console.log(`Transitioning to Innings ${gameState.innings}. Next batting: ${gameState.teams[gameState.currentBattingTeamId].name}. Target: ${gameState.target}`);
+            showInningsBreakMessage();
+        };
+
+        /** Resets the current innings' score trackers and batsman's current innings stats. */
+        const resetCurrentInningsScoreState = () => {
             gameState.score.batting = {
                 runs: 0, wickets: 0, overs: 0, balls: 0,
                 onStrikePlayerIndex: 0, offStrikePlayerIndex: 1, nextPlayerIndex: 2
             };
             gameState.score.bowling = {
                 overs: 0, balls: 0, wickets: 0, runsConceded: 0,
-                currentBowlerIndex: 5, // Reset bowler index
-                lastBowlerIndex: -1 // Reset for new innings
+                currentBowlerIndex: 5,
+                lastBowlerIndex: -1
             };
 
-            // Display message box for innings break
-            showInningsBreakMessage();
+            // Reset player-specific CURRENT INNINGS stats for the team that is about to bat
+            const currentBattingTeam = gameState.teams[gameState.currentBattingTeamId];
+            currentBattingTeam.players.forEach(p => {
+                p.currentInningsR = 0; p.currentInningsB = 0; p.currentInningsFours = 0;
+                p.currentInningsSixes = 0; p.currentInningsSR = 0.0; p.currentInningsOut = false;
+            });
+            // Note: Match-total bowling stats (W, Runs, etc.) are NOT reset here; they accumulate across the match.
         };
+
+        /** Calculates and returns the lead/trail message for Test matches. */
+        const calculateTestLeadTrailMessage = () => {
+            const team1Id = gameState.testMatchState.team1Id;
+            const team2Id = gameState.testMatchState.team2Id;
+
+            const team1Scores = gameState.teams[team1Id]?.inningsScores || [];
+            const team2Scores = gameState.teams[team2Id]?.inningsScores || [];
+
+            let message = "";
+
+            if (gameState.innings === 2) { // During Team 2's 1st innings
+                if (team1Scores.length > 0) { // If Team 1 has completed its first innings
+                    const team1Innings1 = team1Scores[0].runs;
+                    const team2CurrentScore = gameState.score.batting.runs;
+                    const diff = team1Innings1 - team2CurrentScore;
+                    if (diff > 0) {
+                        message = `${gameState.teams[team2Id].name} trails by ${diff} runs.`;
+                    } else if (diff < 0) {
+                        message = `${gameState.teams[team2Id].name} leads by ${Math.abs(diff)} runs.`;
+                    } else {
+                        message = `Scores are level.`;
+                    }
+                }
+            } else if (gameState.innings === 3) { // After Team 2's 1st innings, during Team 1's 2nd innings
+                const team1Innings1 = team1Scores[0]?.runs || 0;
+                const team2Innings1 = team2Scores[0]?.runs || 0;
+                const team1CurrentInnings2Score = gameState.score.batting.runs; // Team 1's score in their 2nd innings
+
+                const team1TotalSoFar = team1Innings1 + team1CurrentInnings2Score;
+                const diff = team1TotalSoFar - team2Innings1;
+
+                if (diff > 0) {
+                    message = `${gameState.teams[team1Id].name} leads by ${diff} runs.`;
+                } else if (diff < 0) {
+                    message = `${gameState.teams[team1Id].name} trails by ${Math.abs(diff)} runs.`; // Should be rare
+                } else {
+                    message = `Scores are level cumulatively.`;
+                }
+            } else if (gameState.innings === 4) { // After Team 1's 2nd innings, during Team 2's 2nd innings
+                const team1TotalRuns = (team1Scores[0]?.runs || 0) + (team1Scores[1]?.runs || 0);
+                const team2Innings1 = (team2Scores[0]?.runs || 0);
+                const target = team1TotalRuns - team2Innings1 + 1;
+
+                // Message for chasing team
+                if (target > 0) {
+                    const team2CurrentScore = gameState.score.batting.runs;
+                    const runsNeeded = target - team2CurrentScore;
+                    if (runsNeeded > 0) {
+                        message = `${gameState.teams[team2Id].name} needs ${runsNeeded} runs to win.`;
+                    } else {
+                        message = `${gameState.teams[team2Id].name} has reached the target!`;
+                    }
+                }
+            }
+            return message;
+        };
+
 
         /** Displays a modal/message for the innings break. */
         const showInningsBreakMessage = () => {
-            // Determine which team batted in innings 1 and which will bat in innings 2
-            const innings1BattingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId; // Team that just finished batting (innings 1)
-            const innings2BattingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId; // Team that will bat next (innings 2)
+            let messageTitle = "INNINGS BREAK!";
+            let mainMessage = "";
+            let continueButtonText = "Continue";
 
-            const innings1TeamName = gameState.teams[innings1BattingTeamId].name;
-            const innings2TeamName = gameState.teams[innings2BattingTeamId].name;
+            // If a match result is already set, don't show innings break, go to summary
+            if (gameState.matchResult) {
+                navigateTo('summary');
+                return;
+            }
+
+            if (gameState.gameMode === 'limited_overs') {
+                const innings1BattingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId;
+                const innings2BattingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
+                const innings1TeamName = gameState.teams[innings1BattingTeamId].name;
+                const innings2TeamName = gameState.teams[innings2BattingTeamId].name;
+
+                mainMessage = `End of Innings 1. Target set! ${innings1TeamName} scored ${gameState.target - 1} runs.
+                                <br><strong class="text-cricket-green">${innings2TeamName} will now bat in Innings 2. They need ${gameState.target} runs to win from ${gameState.oversPerInnings} overs.</strong>`;
+                continueButtonText = "Continue to Innings 2";
+            } else { // Test Match
+                const team1Name = gameState.teams[gameState.testMatchState.team1Id].name;
+                const team2Name = gameState.teams[gameState.testMatchState.team2Id].name;
+
+                let nextBattingTeamName = '';
+                if (gameState.innings === 2) nextBattingTeamName = team2Name;
+                else if (gameState.innings === 3) nextBattingTeamName = team1Name;
+                else if (gameState.innings === 4) nextBattingTeamName = team2Name;
+
+                messageTitle = `End of Innings ${gameState.innings - 1}!`; // Innings has already been incremented by now
+                if (gameState.innings === 2) {
+                    mainMessage = `<strong>${team1Name} completed their 1st innings.</strong>`;
+                    mainMessage += `<br><br> ${nextBattingTeamName} will now bat in Innings ${gameState.innings}.`;
+                } else if (gameState.innings === 3) {
+                    mainMessage = `<strong>${team2Name} completed their 1st innings.</strong>`;
+                    if (gameState.testMatchState.currentLeadTrailMessage) {
+                        mainMessage += `<br>${gameState.testMatchState.currentLeadTrailMessage}`;
+                    }
+                    mainMessage += `<br><br> ${nextBattingTeamName} will now bat in Innings ${gameState.innings}.`;
+                } else if (gameState.innings === 4) {
+                    mainMessage = `<strong>${team1Name} completed their 2nd innings.</strong>`;
+                     if (gameState.testMatchState.currentLeadTrailMessage) {
+                        mainMessage += `<br>${gameState.testMatchState.currentLeadTrailMessage}`;
+                    }
+                    mainMessage += `<br><br> ${nextBattingTeamName} will now bat in Innings ${gameState.innings} (Final Chase). They need ${gameState.target} runs to win.`;
+                    continueButtonText = "Continue to Final Innings";
+                }
+            }
 
             const message = `
                 <div id="innings-break-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
                     <div class="bg-white card p-8 w-full max-w-md text-center">
-                        <h3 class="text-3xl font-bold mb-4 text-cricket-gold">INNINGS BREAK!</h3>
-                        <p class="text-xl mb-6">End of Innings 1. Target set!</p>
-                        <p class="text-lg mb-8">${innings1TeamName} scored ${gameState.target - 1} runs.</p>
-                        <p class="text-xl font-semibold mb-8 text-cricket-green">${innings2TeamName} will now bat in Innings 2. They need ${gameState.target} runs to win from ${gameState.selectedOvers} overs.</p>
+                        <h3 class="text-3xl font-bold mb-4 text-cricket-gold">${messageTitle}</h3>
+                        <p class="text-xl mb-6">${mainMessage}</p>
                         <button onclick="document.getElementById('innings-break-modal').remove(); navigateTo('match');" class="btn-primary">
-                            Continue to Innings 2
+                            ${continueButtonText}
                         </button>
                     </div>
                 </div>
@@ -1034,108 +1305,202 @@ Player Name Y (Batter)
 
         /** Determines the match winner and sets the final result. */
         const endMatch = () => {
-            // Determine which team batted first and second
-            const firstBattingTeamId = gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId;
-            const secondBattingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
-
-            const innings1Score = gameState.teams[firstBattingTeamId].inningsScore;
-            const innings2Score = gameState.teams[secondBattingTeamId].inningsScore;
-
-            if (!innings1Score || !innings2Score) {
-                console.error("Match finished without two complete innings scores.");
-                gameState.matchResult = "Error: Incomplete scores";
-                navigateTo('summary');
-                return;
-            }
-
             let resultLine = '';
             let winnerTeamId = '';
             let winnerTeamName = '';
 
-            // If second batting team (chasing) has more runs
-            if (innings2Score.runs >= innings1Score.runs + 1) { // They reached or surpassed target
-                winnerTeamId = secondBattingTeamId;
-                winnerTeamName = gameState.teams[secondBattingTeamId].name;
-                const wicketsRemaining = 10 - innings2Score.wickets;
-                resultLine = `${winnerTeamName} won by ${wicketsRemaining} wickets`;
+            const teamA = gameState.teams['A'];
+            const teamB = gameState.teams['B'];
+
+            if (gameState.gameMode === 'limited_overs') {
+                const firstBattingTeamId = (gameState.tossDecision === 'bat' && gameState.tossWinner === 'user') || (gameState.tossDecision === 'bowl' && gameState.tossWinner === 'comp') ? gameState.userTeamId : gameState.compTeamId;
+                const secondBattingTeamId = (firstBattingTeamId === gameState.userTeamId) ? gameState.compTeamId : gameState.userTeamId;
+
+                const innings1Score = gameState.teams[firstBattingTeamId].inningsScores[0];
+                const innings2Score = gameState.teams[secondBattingTeamId].inningsScores[0];
+
+                if (!innings1Score || !innings2Score) {
+                    console.error("Limited Overs match finished without two complete innings scores.");
+                    resultLine = "Error: Incomplete scores";
+                } else if (innings2Score.runs >= gameState.target) {
+                    winnerTeamId = secondBattingTeamId;
+                    winnerTeamName = gameState.teams[winnerTeamId].name;
+                    const wicketsRemaining = 10 - innings2Score.wickets;
+                    resultLine = `${winnerTeamName} won by ${wicketsRemaining} wickets`;
+                } else if (innings1Score.runs > innings2Score.runs) {
+                    winnerTeamId = firstBattingTeamId;
+                    winnerTeamName = gameState.teams[winnerTeamId].name;
+                    const runMargin = innings1Score.runs - innings2Score.runs;
+                    resultLine = `${winnerTeamName} won by ${runMargin} runs`;
+                } else {
+                    resultLine = `The match was tied!`;
+                    winnerTeamName = "No Winner";
+                }
+            } else { // Test Match
+                const team1Id = gameState.testMatchState.team1Id;
+                const team2Id = gameState.testMatchState.team2Id;
+                const team1Name = gameState.teams[team1Id].name;
+                const team2Name = gameState.teams[team2Id].name;
+
+                if (gameState.testMatchState.matchFinishedByInningsWin) {
+                    // Result already set in handleTestMatchInningsEnd
+                    resultLine = gameState.matchResult;
+                    winnerTeamName = (resultLine.includes(team1Name)) ? team1Name : team2Name;
+                } else {
+                    // Only reach here if all 4 innings are completed without an innings win
+                    const team1TotalRuns = (gameState.teams[team1Id].inningsScores[0]?.runs || 0) + (gameState.teams[team1Id].inningsScores[1]?.runs || 0);
+                    const team2TotalRuns = (gameState.teams[team2Id].inningsScores[0]?.runs || 0) + (gameState.teams[team2Id].inningsScores[1]?.runs || 0);
+
+                    // Check for Team 2 winning by chasing the target in Innings 4
+                    if (gameState.innings === 4 && gameState.score.batting.runs >= gameState.target) {
+                        winnerTeamId = team2Id;
+                        winnerTeamName = team2Name;
+                        const wicketsRemaining = 10 - gameState.score.batting.wickets;
+                        resultLine = `${winnerTeamName} won by ${wicketsRemaining} wickets`;
+                    }
+                    // Check for Team 1 winning by runs (Team 2 failed to chase target, and Team 1 has more total runs)
+                    else if (team1TotalRuns > team2TotalRuns) {
+                        winnerTeamId = team1Id;
+                        winnerTeamName = team1Name;
+                        const runMargin = team1TotalRuns - team2TotalRuns;
+                        resultLine = `${winnerTeamName} won by ${runMargin} runs`;
+                    }
+                    // Check for a Tie (scores are exactly equal *and* target reached *or* team 2 all out)
+                    else if (team1TotalRuns === team2TotalRuns && gameState.innings === 4 && gameState.score.batting.wickets === 10 && gameState.score.batting.runs === team2TotalRuns - (gameState.teams[team2Id].inningsScores[0]?.runs || 0)) {
+                        // This implies Team 2 reached the exact target on the last ball/wicket, and is all out.
+                        resultLine = `The match was tied!`;
+                        winnerTeamName = "No Winner";
+                    }
+                    // If 4 innings completed, no winner, and not a tie, it's a draw.
+                    else {
+                        resultLine = `The match was drawn!`;
+                        winnerTeamName = "No Winner";
+                    }
+                }
             }
-            // If first batting team (set the target) has more runs
-            else if (innings1Score.runs > innings2Score.runs) {
-                winnerTeamId = firstBattingTeamId;
-                winnerTeamName = gameState.teams[firstBattingTeamId].name;
-                const runMargin = innings1Score.runs - innings2Score.runs;
-                resultLine = `${winnerTeamName} won by ${runMargin} runs`;
-            } else {
-                // Tie (if scores are equal and all wickets fell or overs completed for 2nd batting team)
-                resultLine = `The match was tied!`;
-                winnerTeamName = "No Winner"; // Or a specific tie handling
-            }
+            gameState.matchResult = resultLine; // Ensure matchResult is always set here for summary
 
             // 1. Calculate Man of the Match and final summary structure
-            const summary = generateMatchSummary(winnerTeamName, resultLine, firstBattingTeamId, secondBattingTeamId);
+            const firstBattingOverallTeamId = gameState.gameMode === 'test_match' ? gameState.testMatchState.team1Id : ((gameState.tossDecision === 'bat' && gameState.tossWinner === 'user') || (gameState.tossDecision === 'bowl' && gameState.tossWinner === 'comp') ? gameState.userTeamId : gameState.compTeamId);
+            const secondBattingOverallTeamId = gameState.gameMode === 'test_match' ? gameState.testMatchState.team2Id : (firstBattingOverallTeamId === gameState.userTeamId ? gameState.compTeamId : gameState.userTeamId);
+
+            const summary = generateMatchSummary(winnerTeamName, gameState.matchResult, firstBattingOverallTeamId, secondBattingOverallTeamId);
             gameState.summary = summary;
-            gameState.matchResult = resultLine;
 
             // 2. Update Global Records
             updateGlobalRecords(summary, winnerTeamId, winnerTeamName);
 
             // 3. Navigate to Summary Screen
-            navigateTo('summary');
+            navigateTo('summary'); // This must be the final action.
         };
+
+        // New simulateMatch function
+        const simulateMatch = async () => {
+            gameState.isSimulating = true;
+            saveState();
+            renderScreen(); // Re-render to update button states immediately
+
+            const simulationLoop = async () => {
+                // Stop conditions: if explicitly requested, if match has ended, or if not on match screen
+                if (!gameState.isSimulating || gameState.matchResult || gameState.currentScreen !== 'match') {
+                    stopSimulation();
+                    return;
+                }
+
+                // Call handleRoll, which handles logic and returns whether an innings ended
+                const inningsEnded = await handleRoll();
+
+                // If innings ended or an over completed (for progress update)
+                if (inningsEnded || (gameState.score.batting.balls === 0 && gameState.score.batting.overs > 0)) {
+                     // Allow UI to update before continuing simulation or showing next modal
+                    await new Promise(resolve => setTimeout(resolve, 0)); // Short delay for UI thread
+                    renderScreen();
+                }
+                
+                // If match has concluded during this roll, handleRoll (via endInnings -> endMatch -> navigateTo) would have changed currentScreen
+                if (gameState.matchResult || gameState.currentScreen !== 'match') {
+                    stopSimulation();
+                    return;
+                }
+
+                // Continue simulation after a short delay
+                setTimeout(simulationLoop, 100); // Small delay for visual effect
+            };
+
+            simulationLoop();
+        };
+
+        const stopSimulation = () => {
+            gameState.isSimulating = false;
+            saveState();
+            renderScreen(); // Re-render to re-enable manual roll button and update simulate button text
+        };
+
 
         // --- SUMMARY & RECORDS LOGIC ---
 
         /** Generates the match summary data structure. */
-        const generateMatchSummary = (winnerName, resultLine, innings1BattingTeamId, innings2BattingTeamId) => {
+        const generateMatchSummary = (winnerName, resultLine, firstBattingOverallTeamId, secondBattingOverallTeamId) => {
             const teamA = gameState.teams['A'];
             const teamB = gameState.teams['B'];
 
-            const getInningsDetails = (battingTeamId, bowlingTeamId) => {
-                const battingTeam = gameState.teams[battingTeamId];
-                const bowlingTeam = gameState.teams[bowlingTeamId]; // The team that bowled against battingTeam
-                const score = battingTeam.inningsScore;
+            const getInningsDetails = (teamId, inningsIndex) => { // inningsIndex 0 for 1st innings of that team, 1 for 2nd
+                const team = gameState.teams[teamId];
+                const inningsScore = team.inningsScores[inningsIndex]; // Specific innings score
+                const inningsPlayersSnapshot = team.inningsScorecardHistory[inningsIndex]; // Specific innings player snapshot
 
-                if (!score) return null; // Should not happen in a complete match
+                if (!inningsScore || !inningsPlayersSnapshot) return null;
 
-                // Batsmen (R > 0), sorted by runs
-                const topBatsmen = battingTeam.players
+                // For summary, top batsmen are based on their performance in *that specific innings*
+                const topBatsmen = inningsPlayersSnapshot
                     .filter(p => p.R > 0)
                     .sort((a, b) => b.R - a.R)
                     .slice(0, 3)
                     .map(p => ({ name: p.name, runs: p.R, balls: p.B }));
 
-                // Bowlers (W > 0 or R > 0), sorted by wickets then runs conceded
-                const topBowlers = bowlingTeam.players
-                    .filter(p => p.Runs > 0 || p.W > 0 || p.Balls > 0) // Include if they bowled any balls
-                    .sort((a, b) => b.W - a.W || a.Runs - b.Runs) // Sort by wickets descending, then runs ascending
+                // For bowlers, we'll still use match-total stats, as per-innings bowling data is complex to track and not explicitly requested for summary.
+                // The bowling team for an innings is the OTHER team, but top bowlers should represent overall match performance.
+                const bowlingTeamId = (teamId === 'A') ? 'B' : 'A'; // CORRECTED: Use string literals 'A' and 'B'
+                const bowlingTeam = gameState.teams[bowlingTeamId];
+
+                const bowlersWhoPlayed = bowlingTeam.players.filter(p => p.Runs > 0 || p.W > 0 || p.Balls > 0);
+                const topBowlers = bowlersWhoPlayed
+                    .sort((a, b) => b.W - a.W || a.Runs - b.Runs)
                     .slice(0, 3)
                     .map(p => ({
                         name: p.name,
-                        overs: `${p.O}.${p.Balls % 6}`,
-                        wickets: p.W || 0,
-                        runs: p.Runs || 0,
-                        econ: p.Econ
+                        overs: `${Math.floor(p.Balls / 6)}.${p.Balls % 6}`, // Match total balls bowled
+                        wickets: p.W || 0, // Match total wickets
+                        runs: p.Runs || 0, // Match total runs conceded
+                        econ: (p.Balls > 0) ? (p.Runs / (p.Balls / 6)).toFixed(2) : 0.0
                     }));
 
                 return {
-                    name: battingTeam.name,
-                    score: `${score.runs}/${score.wickets} (${score.overs}.${score.balls} Overs)`,
+                    name: team.name,
+                    score: `${inningsScore.runs}/${inningsScore.wickets} (${inningsScore.overs}.${inningsScore.balls} Overs)`,
                     topBatsmen,
-                    topBowlers,
+                    topBowlers, // These are match-total top bowlers
                 };
             };
 
-            // Call getInningsDetails for both innings, correctly identifying batting and bowling teams for each
-            const innings1 = getInningsDetails(innings1BattingTeamId, innings2BattingTeamId); // 1st batting team, 2nd batting team bowled
-            const innings2 = getInningsDetails(innings2BattingTeamId, innings1BattingTeamId); // 2nd batting team, 1st batting team bowled
+            let innings1Summary = null, innings2Summary = null, innings3Summary = null, innings4Summary = null;
 
-            // Determine Man of the Match (MoM)
+            if (gameState.gameMode === 'limited_overs') {
+                innings1Summary = getInningsDetails(firstBattingOverallTeamId, 0);
+                innings2Summary = getInningsDetails(secondBattingOverallTeamId, 0);
+            } else { // Test Match
+                innings1Summary = getInningsDetails(gameState.testMatchState.team1Id, 0); // Team 1's 1st innings (actual innings #1)
+                innings2Summary = getInningsDetails(gameState.testMatchState.team2Id, 0); // Team 2's 1st innings (actual innings #2)
+                innings3Summary = getInningsDetails(gameState.testMatchState.team1Id, 1); // Team 1's 2nd innings (actual innings #3)
+                innings4Summary = getInningsDetails(gameState.testMatchState.team2Id, 1); // Team 2's 2nd innings (actual innings #4)
+            }
+
+            // Determine Man of the Match based on match-total player stats
             const allPlayers = [...teamA.players, ...teamB.players];
-            let bestImpact = { name: 'N/A', score: -Infinity, type: '', teamName: '' }; // Start with negative infinity
+            let bestImpact = { name: 'N/A', score: -Infinity, type: '', teamName: '' };
 
             allPlayers.forEach(p => {
-                // Impact Score = (Runs * 1.5) + (Wickets * 15) - (Runs Conceded * 0.5)
-                // Only consider players who actually played (faced balls or bowled balls)
+                // Only consider players who actually participated (faced balls or bowled balls)
                 if (p.B > 0 || p.Balls > 0) {
                     const impact = (p.R * 1.5) + (p.W * 15) - (p.Runs * 0.5);
                     const team = teamA.players.includes(p) ? teamA : teamB;
@@ -1144,14 +1509,13 @@ Player Name Y (Batter)
                         bestImpact = {
                             name: p.name,
                             score: impact,
-                            type: (p.R > p.Runs) || (p.R > 0 && p.W === 0) ? 'Batting' : (p.W > 0 ? 'Bowling' : 'All-Round'), // More nuanced type
+                            type: (p.R > p.Runs) || (p.R > 0 && p.W === 0) ? 'Batting' : (p.W > 0 ? 'Bowling' : 'All-Round'),
                             teamName: team.name
                         };
                     }
                 }
             });
             if (bestImpact.name === 'N/A' && allPlayers.length > 0) {
-                // Fallback if no impact player found (e.g., very low scoring game, default to first player who played)
                 const firstPlayerWhoPlayed = allPlayers.find(p => p.B > 0 || p.Balls > 0);
                 if (firstPlayerWhoPlayed) {
                      const team = teamA.players.includes(firstPlayerWhoPlayed) ? teamA : teamB;
@@ -1164,27 +1528,31 @@ Player Name Y (Batter)
 
             return {
                 matchDate: new Date().toLocaleDateString(),
-                innings1,
-                innings2,
+                innings1: innings1Summary,
+                innings2: innings2Summary,
+                innings3: innings3Summary,
+                innings4: innings4Summary,
                 resultLine: resultLine,
-                manOfTheMatch: bestImpact
+                manOfTheMatch: bestImpact,
+                gameMode: gameState.gameMode,
+                // Only include testLeadTrailMessage if it's a Test match AND the result wasn't an innings win
+                testLeadTrailMessage: gameState.gameMode === 'test_match' && !resultLine.includes("won by an innings") ? calculateTestLeadTrailMessage() : ''
             };
         };
 
         /** Updates the persistent global records. */
         const updateGlobalRecords = (summary, winnerTeamId, winnerTeamName) => {
-            // 1. Update Match History
             globalRecords.matchHistory.unshift({
                 date: summary.matchDate,
                 result: summary.resultLine,
                 mom: summary.manOfTheMatch.name,
+                gameMode: summary.gameMode
             });
 
-            // 2. Update Player Statistics (Simple combined stats)
+            // Update Player Statistics (using match-total stats from player objects)
             const allPlayersInMatch = [...gameState.teams['A'].players, ...gameState.teams['B'].players];
             allPlayersInMatch.forEach(p => {
-                // Only update stats for players who actually participated (faced balls or bowled)
-                if (p.B > 0 || p.Balls > 0) {
+                if (p.B > 0 || p.Balls > 0) { // Only update stats for players who actually participated
                     const team = gameState.teams['A'].players.includes(p) ? gameState.teams['A'] : gameState.teams['B'];
                     const teamName = team.name;
                     const key = `${p.name}_${teamName}`; // Unique key for player stats
@@ -1192,27 +1560,24 @@ Player Name Y (Batter)
                     if (!globalRecords.playerStats[key]) {
                         globalRecords.playerStats[key] = {
                             name: p.name,
-                            teamName: teamName,
+                            teamName: teamName, // Use `teamName` here
                             R: 0, B: 0, W: 0, Runs: 0, Matches: 0, totalBallsBowled: 0,
-                            topScore: 0, // Initialize
-                            bestBowlingFigure: { wickets: 0, runs: Infinity } // Initialize
+                            topScore: 0,
+                            bestBowlingFigure: { wickets: 0, runs: Infinity }
                         };
                     }
                     const stats = globalRecords.playerStats[key];
-                    stats.R += p.R;
-                    stats.B += p.B;
-                    stats.W += p.W;
-                    stats.Runs += p.Runs;
+                    stats.R += p.R; // Add match total runs
+                    stats.B += p.B; // Add match total balls faced
+                    stats.W += p.W; // Add match total wickets
+                    stats.Runs += p.Runs; // Add match total runs conceded
                     stats.Matches += 1;
-                    stats.totalBallsBowled += p.Balls; // Accumulate total balls bowled
+                    stats.totalBallsBowled += p.Balls; // Add match total balls bowled
 
-                    // Update Top Score
                     if (p.R > stats.topScore) {
                         stats.topScore = p.R;
                     }
 
-                    // Update Best Bowling Figure (compare wickets first, then runs)
-                    // Only update if current player's bowling is better than the recorded best
                     if (p.W > stats.bestBowlingFigure.wickets ||
                         (p.W === stats.bestBowlingFigure.wickets && p.Runs < stats.bestBowlingFigure.runs)) {
                         stats.bestBowlingFigure = { wickets: p.W, runs: p.Runs };
@@ -1220,7 +1585,7 @@ Player Name Y (Batter)
                 }
             });
 
-            // 3. Check Best Batting/Bowling (Match-specific highest values)
+            // Check Best Batting/Bowling (Match-specific highest values)
             allPlayersInMatch.forEach(p => {
                 if (p.B > 0 || p.Balls > 0) { // Only consider players who actually played
                     const team = gameState.teams['A'].players.includes(p) ? gameState.teams['A'] : gameState.teams['B'];
@@ -1243,24 +1608,28 @@ Player Name Y (Batter)
             const summary = gameState.summary;
             if (!summary) return `<div class="max-w-xl mx-auto p-8 bg-white card text-center"><h3 class="text-xl font-bold text-cricket-red">ERROR: No match summary data found.</h3><button onclick="navigateTo('start')" class="btn-primary mt-4">Back to Menu</button></div>`;
 
-            const renderDetails = (innings) => {
+            const renderDetails = (innings, teamDisplayName, inningsNumDisplay) => {
                 if (!innings) return `<p class="text-gray-500">Innings details not recorded.</p>`;
                 return `
                     <div class="p-4 bg-gray-50 rounded-lg shadow-inner">
-                        <p class="text-lg font-semibold mb-2">${innings.name}: <span class="text-cricket-green font-extrabold">${innings.score}</span></p>
+                        <p class="text-lg font-semibold mb-2">${teamDisplayName} - Innings ${inningsNumDisplay}: <span class="text-cricket-green font-extrabold">${innings.score}</span></p>
 
-                        <h4 class="font-bold mt-3 border-b border-gray-200 pb-1">Top Batsmen</h4>
+                        <h4 class="font-bold mt-3 border-b border-gray-200 pb-1">Top Batsmen (Innings)</h4>
                         <ul class="list-disc list-inside ml-2 text-sm space-y-1">
                             ${innings.topBatsmen.map(p => `<li>${p.name}: ${p.runs} runs (${p.balls} balls)</li>`).join('') || '<li>No significant batting.</li>'}
                         </ul>
 
-                        <h4 class="font-bold mt-3 border-b border-gray-200 pb-1">Top Bowlers</h4>
+                        <h4 class="font-bold mt-3 border-b border-gray-200 pb-1">Top Bowlers (Match Total)</h4>
                         <ul class="list-disc list-inside ml-2 text-sm space-y-1">
                             ${innings.topBowlers.map(p => `<li>${p.name}: ${p.overs} O, ${p.wickets}/${p.runs} (Econ: ${p.econ})</li>`).join('') || '<li>No significant bowling.</li>'}
                         </ul>
                     </div>
                 `;
             };
+
+            const team1ActualName = gameState.teams[gameState.testMatchState.team1Id || gameState.userTeamId]?.name || 'Team 1';
+            const team2ActualName = gameState.teams[gameState.testMatchState.team2Id || gameState.compTeamId]?.name || 'Team 2';
+
 
             return `
                 <div class="max-w-4xl mx-auto p-8 bg-white card">
@@ -1269,6 +1638,12 @@ Player Name Y (Batter)
                         <p class="text-3xl font-black">${summary.resultLine}</p>
                     </div>
 
+                    ${summary.gameMode === 'test_match' && summary.testLeadTrailMessage ? `
+                        <div class="text-center p-4 mb-8 rounded-xl bg-blue-100 text-blue-800 shadow-md">
+                            <p class="text-xl font-semibold">Final Lead/Trail: ${summary.testLeadTrailMessage}</p>
+                        </div>
+                    ` : ''}
+
                     <!-- Man of the Match -->
                     <div class="text-center mb-10 p-6 bg-yellow-50 rounded-xl border-4 border-cricket-gold">
                         <h3 class="text-xl font-bold text-gray-700">MAN OF THE MATCH</h3>
@@ -1276,16 +1651,37 @@ Player Name Y (Batter)
                         <p class="text-lg text-gray-600">(${summary.manOfTheMatch.type} Performance for ${summary.manOfTheMatch.teamName})</p>
                     </div>
 
-                    <div class="grid md:grid-cols-2 gap-6 mb-10">
-                        <div>
-                            <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 1</h3>
-                            ${renderDetails(summary.innings1)}
+                    ${summary.gameMode === 'limited_overs' ? `
+                        <div class="grid md:grid-cols-2 gap-6 mb-10">
+                            <div>
+                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 1</h3>
+                                ${renderDetails(summary.innings1, summary.innings1?.name, 1)}
+                            </div>
+                            <div>
+                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 2</h3>
+                                ${renderDetails(summary.innings2, summary.innings2?.name, 2)}
+                            </div>
                         </div>
-                        <div>
-                            <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 2</h3>
-                            ${renderDetails(summary.innings2)}
+                    ` : ` <!-- Test Match Specific Innings Display -->
+                        <div class="grid md:grid-cols-2 gap-6 mb-10">
+                            <div>
+                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 1</h3>
+                                ${renderDetails(summary.innings1, team1ActualName, 1)}
+                            </div>
+                            <div>
+                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 2</h3>
+                                ${renderDetails(summary.innings2, team2ActualName, 1)}
+                            </div>
+                            <div>
+                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 3</h3>
+                                ${renderDetails(summary.innings3, team1ActualName, 2)}
+                            </div>
+                            <div>
+                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 4</h3>
+                                ${renderDetails(summary.innings4, team2ActualName, 2)}
+                            </div>
                         </div>
-                    </div>
+                    `}
 
                     <!-- Gemini Commentary Section (Optional) -->
                     <div class="mt-8 pt-6 border-t border-gray-200">
@@ -1316,6 +1712,7 @@ Player Name Y (Batter)
                     <td class="px-4 py-2">${m.date}</td>
                     <td class="px-4 py-2 font-semibold">${m.result}</td>
                     <td class="px-4 py-2">${m.mom}</td>
+                    <td class="px-4 py-2">${m.gameMode === 'test_match' ? 'Test Match' : 'Limited Overs'}</td>
                 </tr>
             `).join('');
 
@@ -1325,12 +1722,11 @@ Player Name Y (Batter)
                 let careerEcon = 0.0;
                 if (stats.totalBallsBowled > 0) {
                     const totalOversDecimal = totalOversCareer + (ballsInCurrentOverCareer / 6);
-                    if (totalOversDecimal > 0) { // Avoid division by zero
+                    if (totalOversDecimal > 0) {
                         careerEcon = (stats.Runs / totalOversDecimal).toFixed(2);
                     }
                 }
 
-                // Format best bowling figure. Check if wickets > 0 for a meaningful figure.
                 const formattedBestBowling = stats.bestBowlingFigure && stats.bestBowlingFigure.wickets > 0
                     ? `${stats.bestBowlingFigure.wickets}/${stats.bestBowlingFigure.runs}`
                     : '-';
@@ -1409,10 +1805,11 @@ Player Name Y (Batter)
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Result</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">M.O.M</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mode</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200">
-                                ${historyRows || '<tr><td colspan="3" class="px-4 py-4 text-center text-gray-500">No match history found.</td></tr>'}
+                                ${historyRows || '<tr><td colspan="4" class="px-4 py-4 text-center text-gray-500">No match history found.</td></tr>'}
                             </tbody>
                         </table>
                     </div>
@@ -1443,24 +1840,16 @@ Player Name Y (Batter)
             const oldName = player.name;
             player.name = newName.trim() || DEFAULT_PLAYERS[index];
 
-            // If player name changed, update key in globalRecords.playerStats
-            // Only update if a meaningful name was provided
             if (oldName !== player.name && player.name !== DEFAULT_PLAYERS[index] && globalRecords.playerStats[`${oldName}_${gameState.teams[teamId].name}`]) {
                 const oldKey = `${oldName}_${gameState.teams[teamId].name}`;
                 const newKey = `${player.name}_${gameState.teams[teamId].name}`;
 
-                // Only move stats if the new key doesn't already exist from another player
                 if (!globalRecords.playerStats[newKey]) {
                     globalRecords.playerStats[newKey] = globalRecords.playerStats[oldKey];
                     delete globalRecords.playerStats[oldKey];
                 } else {
-                    // Handle potential merge if new name already exists (e.g., player renamed to an existing player's name)
-                    // For simplicity here, we'll just log and assume the existing stats for 'newKey' are the canonical ones.
-                    // The old player's unique history under 'oldKey' would be lost.
-                    console.warn(`Player "${oldName}" renamed to "${player.name}", but a player with that name already exists in records. Old stats for "${oldName}" might be merged or overwritten.`);
-                    // Optionally, you could merge stats if this is desired behavior:
-                    // globalRecords.playerStats[newKey].R += globalRecords.playerStats[oldKey].R; // etc.
-                    delete globalRecords.playerStats[oldKey]; // Remove the old entry
+                    console.warn(`Player "${oldName}" renamed to "${player.name}", but a player with that name already exists in records.`);
+                    delete globalRecords.playerStats[oldKey];
                 }
             }
             saveState();
@@ -1482,7 +1871,7 @@ Player Name Y (Batter)
                 gameState.compTeamId = 'A';
             }
             saveState();
-            renderScreen(); // Re-render to update radio buttons and display
+            renderScreen();
         };
 
         /** Moves a player up or down in the batting order. */
@@ -1491,10 +1880,9 @@ Player Name Y (Batter)
             const targetIndex = direction === 'up' ? index - 1 : index + 1;
 
             if (targetIndex >= 0 && targetIndex < players.length) {
-                // Swap players
                 [players[index], players[targetIndex]] = [players[targetIndex], players[index]];
                 saveState();
-                renderScreen(); // Re-render to show updated order
+                renderScreen();
             }
         };
 
@@ -1508,7 +1896,6 @@ Player Name Y (Batter)
             feedback.classList.add('hidden');
             feedback.textContent = '';
 
-            // Pre-fill textarea with current team data as a template
             let prefillText = '';
             prefillText += `${gameState.teams['A'].name}:\n`;
             gameState.teams['A'].players.forEach(p => {
@@ -1605,7 +1992,7 @@ ${input}`;
             const payload = {
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
-                    responseMimeType: "application/json", // Crucial for getting JSON output
+                    responseMimeType: "application/json",
                 },
             };
 
@@ -1620,8 +2007,6 @@ ${input}`;
                 let parsedData;
 
                 try {
-                    // Gemini 1.5 Flash with responseMimeType="application/json" should return direct JSON
-                    // Older models or different configs might return JSON as string inside 'text'
                     parsedData = result;
                     if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
                         parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
@@ -1636,8 +2021,8 @@ ${input}`;
                     updateTeamsFromParsedData(parsedData);
                     saveState();
                     hideBulkEditModal();
-                    renderScreen(); // Re-render the team editor to show changes
-                    alert("Team rosters updated successfully!"); // Use alert for clear confirmation
+                    renderScreen();
+                    alert("Team rosters updated successfully!");
                 } else {
                     updateFeedback("AI could not extract team data from your input. Please check the format and try again.", 'error');
                 }
@@ -1652,30 +2037,25 @@ ${input}`;
 
         /** Updates the gameState with parsed team data from AI. */
         const updateTeamsFromParsedData = (parsedData) => {
-            // Helper to update a single team
             const updateSingleTeam = (teamId, parsedTeamData) => {
                 if (!parsedTeamData || !parsedTeamData.name || !parsedTeamData.players) {
-                    return; // Skip if parsed data for this team is incomplete
+                    return;
                 }
 
                 gameState.teams[teamId].name = parsedTeamData.name.trim() || `Team ${teamId}`;
 
-                // Create a new players array, starting with defaults but overriding with AI names/roles
                 const newPlayers = [];
                 const currentTeamName = gameState.teams[teamId].name;
 
-                // Process parsed players first, up to 11
                 parsedTeamData.players.slice(0, 11).forEach(parsedPlayer => {
                     if (parsedPlayer.name && parsedPlayer.name.trim() !== '') {
                         const newPlayerName = parsedPlayer.name.trim();
                         const newPlayerRole = VALID_ROLES.includes(parsedPlayer.role) ? parsedPlayer.role : 'Batter';
 
-                        // Create new player object for current match (match stats reset)
+                        // Create new player object with reset match-specific stats and current innings stats
                         const playerForMatch = getNewPlayerStats(newPlayerName, newPlayerRole);
                         newPlayers.push(playerForMatch);
 
-                        // Ensure an entry exists in globalRecords.playerStats for this player
-                        // This will handle both new players and existing players whose names might have changed
                         const existingStatsKey = `${newPlayerName}_${currentTeamName}`;
                         if (!globalRecords.playerStats[existingStatsKey]) {
                             globalRecords.playerStats[existingStatsKey] = {
@@ -1689,12 +2069,10 @@ ${input}`;
                     }
                 });
 
-                // Pad with default players if fewer than 11 were provided by AI
                 while (newPlayers.length < 11) {
-                    const defaultIndex = newPlayers.length; // Use the next available default index
+                    const defaultIndex = newPlayers.length;
                     newPlayers.push(getNewPlayerStats(DEFAULT_PLAYERS[defaultIndex], DEFAULT_ROLES[defaultIndex]));
 
-                     // Also ensure default players have an entry in global records if they weren't explicitly named
                     const defaultPlayerName = DEFAULT_PLAYERS[defaultIndex];
                     const defaultPlayerKey = `${defaultPlayerName}_${currentTeamName}`;
                      if (!globalRecords.playerStats[defaultPlayerKey]) {
@@ -1708,22 +2086,13 @@ ${input}`;
                      }
                 }
 
-                // IMPORTANT: Before setting `gameState.teams[teamId].players = newPlayers;`,
-                // we need to check if any player names in the *old* roster are no longer present
-                // in the `newPlayers` list generated from AI. If so, their stats might become orphaned.
-                // For this implementation, we're simply replacing the roster, assuming the user
-                // will manually manage old player names if they want to retain their stats but remove them from roster.
-                // A more complex solution would involve asking if old player stats should be kept or deleted.
-
                 gameState.teams[teamId].players = newPlayers;
             };
 
-            // Process Team A
             if (parsedData.teams.A) {
                 updateSingleTeam('A', parsedData.teams.A);
             }
 
-            // Process Team B
             if (parsedData.teams.B) {
                 updateSingleTeam('B', parsedData.teams.B);
             }
@@ -1744,13 +2113,30 @@ ${input}`;
                 return;
             }
 
-            // Disable button and show loading
             button.disabled = true;
             errorDiv.classList.add('hidden');
             commentaryDiv.innerHTML = `<p class="text-center text-gray-500"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-cricket-green inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></path></svg>Generating detailed match commentary...</p>`;
 
             const summaryData = gameState.summary;
-            const prompt = `Write a short (2-paragraph) and exciting cricket match commentary based on the following professional match summary. Focus on the tension and the Man of the Match performance. Match result: ${summaryData.resultLine}. Man of the Match: ${summaryData.manOfTheMatch.name}. Innings 1: ${summaryData.innings1.name} scored ${summaryData.innings1.score}. Innings 2: ${summaryData.innings2.name} scored ${summaryData.innings2.score}. Also include a short mention of the best batting and bowling performances in the match if they were significant, e.g., "A brilliant 50 runs by PlayerX" or "BowlerY took 3 wickets for 20 runs".`;
+            let prompt = `Write a short (2-paragraph) and exciting cricket match commentary based on the following professional match summary. Focus on the tension and the Man of the Match performance.`;
+
+            prompt += `\nMatch result: ${summaryData.resultLine}.`;
+            prompt += `\nMan of the Match: ${summaryData.manOfTheMatch.name}.`;
+
+            if (summaryData.gameMode === 'limited_overs') {
+                prompt += `\nInnings 1: ${summaryData.innings1?.name} scored ${summaryData.innings1?.score || 'N/A'}.`;
+                prompt += `\nInnings 2: ${summaryData.innings2?.name} scored ${summaryData.innings2?.score || 'N/A'}.`;
+            } else { // Test Match
+                prompt += `\nInnings 1: ${summaryData.innings1?.name} scored ${summaryData.innings1?.score || 'N/A'}.`;
+                prompt += `\nInnings 2: ${summaryData.innings2?.name} scored ${summaryData.innings2?.score || 'N/A'}.`;
+                prompt += `\nInnings 3: ${summaryData.innings3?.name} scored ${summaryData.innings3?.score || 'N/A'}.`;
+                prompt += `\nInnings 4: ${summaryData.innings4?.name} scored ${summaryData.innings4?.score || 'N/A'}.`;
+                if (summaryData.testLeadTrailMessage) {
+                    prompt += `\nFinal Lead/Trail status: ${summaryData.testLeadTrailMessage}.`;
+                }
+            }
+            prompt += `\nAlso include a short mention of the best batting and bowling performances in the match if they were significant, e.g., "A brilliant 50 runs by PlayerX" or "BowlerY took 3 wickets for 20 runs".`;
+
 
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
             const payload = {
@@ -1789,26 +2175,23 @@ ${input}`;
                 try {
                     const response = await fetch(url, options);
                     if (!response.ok) {
-                        // Attempt to read error message from response body
                         let errorMessage = `HTTP error! status: ${response.status} - ${response.statusText}`;
                         try {
                             const errorBody = await response.json();
                             if (errorBody.error && errorBody.error.message) {
                                 errorMessage += `: ${errorBody.error.message}`;
                             }
-                        } catch (parseError) {
-                            // If response body isn't JSON, just use default message
-                        }
+                        } catch (parseError) {}
                         throw new Error(errorMessage);
                     }
                     return response;
                 } catch (error) {
                     if (i < retries - 1) {
-                        const delay = Math.pow(2, i) * 1000 + Math.random() * 500; // 1s, 2s, 4s + jitter
+                        const delay = Math.pow(2, i) * 1000 + Math.random() * 500;
                         console.warn(`Retrying fetch (attempt ${i + 1}/${retries})...`, error);
                         await new Promise(resolve => setTimeout(resolve, delay));
                     } else {
-                        throw error; // Throw final error
+                        throw error;
                     }
                 }
             }
@@ -1817,124 +2200,34 @@ ${input}`;
         // --- INITIALIZATION ---
 
         document.addEventListener('DOMContentLoaded', () => {
-            loadState(); // Load persistent data
-            // If the game state suggests a match is ongoing, resume it, otherwise go to start.
-            if (gameState.currentScreen === 'match' && gameState.matchResult) {
-                // If we land on match but it's finished, go to summary
-                gameState.currentScreen = 'summary';
-            } else if (gameState.currentScreen === 'match' && !gameState.matchResult && gameState.innings === 2 && gameState.score.batting.runs === 0 && gameState.score.batting.wickets === 0 && gameState.target > 0) {
-                 // Special case: if innings 1 finished, show innings break message before rendering match screen
-                showInningsBreakMessage();
-                // We navigate to 'match' from the modal, so no extra navigateTo('match') here
-            } else {
-                renderScreen(); // Render current screen
+            loadState();
+            // If resuming a Test Match, ensure the currentLeadTrailMessage is updated
+            if (gameState.currentScreen === 'match' && gameState.gameMode === 'test_match' && !gameState.matchResult) {
+                if (gameState.innings >= 2) {
+                    gameState.testMatchState.currentLeadTrailMessage = calculateTestLeadTrailMessage();
+                }
+            }
+
+            // Special handling for innings break modal if user reloads mid-break
+            // This needs to happen BEFORE the main renderScreen, as the modal itself calls renderScreen
+            if (gameState.currentScreen === 'match' && gameState.innings > 1 && !gameState.matchResult) {
+                // If it was simulating, stop it on reload
+                if(gameState.isSimulating) gameState.isSimulating = false;
+                showInningsBreakMessage(); 
+            } else if (gameState.currentScreen === 'match' && gameState.matchResult) {
+                 // If we were on match screen but matchResult is set, directly go to summary
+                 navigateTo('summary');
+            }
+            else {
+                renderScreen(); // Regular render for start, team editor, toss, or first innings of match
             }
         });
     </script>
 </body>
 </html>
 
------------------------------------------------------------------------------------
+--------------------------------------------------------------------
 
-Here is the revised, clean, point-wise requirement list **including the new “trailing/leading runs” feature** and **toss-based team order**:
-
----
-
-## **📌 Updated Clear-Cut Requirements for Your Cricket Game Website**
-
-### **1. New Match Format Addition**
-
-* Add a new **90-overs format**.
-
-### **2. Match Format Categories**
-
-* The website will have two sections:
-
-  * **Limited Overs**
-  * **Unlimited Overs (Test Match Format)**
-
----
-
-## **3. Test Match Format — Structure**
-
-* A full Test Match with **4 innings**.
-* Each team bats **twice**.
-* **Batting order is not fixed as Team A vs Team B.**
-
-  * A **toss** happens at the start.
-  * The toss-winning team chooses to **bat first** or **bowl first**.
-  * Therefore, innings order is determined dynamically.
-
----
-
-## **4. Innings Flow**
-
-Assuming the toss winner chooses to bat:
-
-1. **1st Innings:** Team that bats first (Batting Team 1)
-2. **2nd Innings:** Other team (Batting Team 2)
-3. **3rd Innings:** Batting Team 1 again
-4. **4th Innings:** Batting Team 2 again (final chase)
-
----
-
-## **5. Runs Comparison Logic**
-
-### **After First Innings:**
-
-* If second team scores **less** →
-  ➝ They are **trail by X runs**.
-* If second team scores **more** →
-  ➝ They are **lead by X runs**.
-* If equal →
-  ➝ **Scores are level**.
-
-### **After Third Innings:**
-
-* First team’s second innings sets the final **target**.
-* Lead or trail again calculated:
-
-  * If first team’s cumulative score is ahead →
-    ➝ They are **leading by X runs**.
-  * If behind →
-    ➝ They are **trailing by X runs** (rare but possible in Test logic without follow-on).
-
----
-
-## **6. Final Innings Target Logic**
-
-* In the **4th innings**, the second team must chase the target.
-* Outcomes:
-
-  * If target is reached → **Second team wins**.
-  * If not reached → **First team wins**.
-
----
-
-## **7. Features to Exclude**
-
-* ❌ **No follow-on rule**
-* ❌ **No declarations**
-
----
-
-## **8. Additional Requirements**
-
-* Keep **all other previous features** of the game.
-* Match summary must be:
-
-  * Detailed
-  * Accurate
-  * Lead/Trail info included at every milestone
-  * Completely error-free
-* Entire workflow must be:
-
-  * **Fully functional**
-  * **Bug-free**
-  * **Deployment-ready**
-
----
-
-## **9. Final Output Requirement**
-
-* You require a **complete, updated, copy-paste-ready codebase** fulfilling all rules and new Test Match logic.
+1. make the overall player stats sortable.
+2. add 2 new stats 100s and 50s which will track each players' centuries and half centuries scored stats.
+3. send me the updated copy paste ready code.
