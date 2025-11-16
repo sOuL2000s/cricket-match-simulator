@@ -88,7 +88,7 @@
 
         /* Nav button styling */
         .nav-button {
-            @apply px-4 py-2 rounded-lg transition duration-150 ease-in-out hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-cricket-gold focus:ring-opacity-50;
+            @apply px-4 py-2 rounded-lg text-sm font-semibold transition duration-150 ease-in-out hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-cricket-gold focus:ring-opacity-50;
         }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -459,7 +459,7 @@ Player Name Y (Batter)
                 }
             } else if (gameState.currentScreen === 'match' && gameState.isMatchActive && !gameState.matchResult) {
                 // Specific buttons for an active match
-                if (!gameState.isSimulating) { // Can't go home or reset if simulating
+                if (!gameState.isSimulating) { // Can't quit if simulating
                     navButtonsHtml += `<button onclick="if(confirm('Are you sure you want to quit the current match? All progress for this match will be lost.')) { resetMatchState(); navigateTo('start'); }" class="nav-button bg-cricket-red hover:bg-red-700">Quit Match</button>`;
                 }
                 const otherTeamId = (gameState.currentBattingTeamId === 'A' ? 'B' : 'A');
@@ -586,7 +586,7 @@ Player Name Y (Batter)
                         ${team.players.map((player, index) => `
                             <div class="flex items-center bg-white p-2 rounded-lg shadow-sm border border-gray-100 gap-2">
                                 <span class="w-8 flex-shrink-0 text-cricket-green font-mono">${index + 1}.</span>
-                                <input class="flex-grow min-w-[80px] p-2 border rounded-lg focus:border-cricket-gold focus:ring-1 focus:ring-cricket-gold"
+                                <input id="${teamId}-player-${index}-name" class="flex-grow min-w-[80px] p-2 border rounded-lg focus:border-cricket-gold focus:ring-1 focus:ring-cricket-gold"
                                     type="text" value="${player.name}"
                                     onblur="updatePlayerName('${teamId}', ${index}, this.value)"
                                     placeholder="Player ${index + 1}">
@@ -1118,6 +1118,8 @@ Player Name Y (Batter)
             const currentBattingTeam = gameState.teams[gameState.currentBattingTeamId];
             const score = gameState.score.batting;
 
+            console.log(`End of Innings (current game.innings: ${gameState.innings}). Team: ${currentBattingTeam.name}. Score: ${score.runs}/${score.wickets}`);
+
             // Snapshot player stats for the completed innings
             const inningsPlayersSnapshot = currentBattingTeam.players.slice(0, score.nextPlayerIndex).map(p => ({
                 name: p.name,
@@ -1130,6 +1132,8 @@ Player Name Y (Batter)
                 out: p.currentInningsOut
             }));
             currentBattingTeam.inningsScorecardHistory.push(inningsPlayersSnapshot);
+            console.log(`Pushed innings scorecard history for ${currentBattingTeam.name}. Total snapshots: ${currentBattingTeam.inningsScorecardHistory.length}`);
+
 
             // Store final innings score
             currentBattingTeam.inningsScores.push({
@@ -1139,6 +1143,8 @@ Player Name Y (Batter)
                 balls: score.balls,
                 inningsNum: gameState.innings
             });
+            console.log(`Pushed innings score for ${currentBattingTeam.name}. Total scores: ${currentBattingTeam.inningsScores.length}`);
+
 
             if (gameState.gameMode === 'limited_overs') {
                 handleLimitedOversInningsEnd();
@@ -1167,70 +1173,76 @@ Player Name Y (Batter)
             const team1Id = gameState.testMatchState.team1Id;
             const team2Id = gameState.testMatchState.team2Id;
 
+            console.log(`--- handleTestMatchInningsEnd START (gameState.innings: ${gameState.innings}) ---`);
+
             // --- Check for immediate match end conditions ---
 
             // Scenario 1: After Innings 2 (Team 2's 1st innings) - Potential win by an innings for Team 1
+            // This happens if Team 2's 1st innings score is less than Team 1's 1st innings score
             if (gameState.innings === 2) {
                 const team1Innings1Score = gameState.teams[team1Id].inningsScores[0]?.runs || 0;
                 const team2Innings1Score = gameState.teams[team2Id].inningsScores[0]?.runs || 0; // Team 2's recently completed 1st innings
 
                 if (team2Innings1Score < team1Innings1Score) {
-                     // Team 1 wins by an innings (Team 2 failed to match Team 1's 1st innings total)
                     gameState.testMatchState.matchFinishedByInningsWin = true;
                     gameState.matchResult = `${gameState.teams[team1Id].name} won by an innings and ${team1Innings1Score - team2Innings1Score} runs!`;
                     console.log("TEST MATCH ENDED (Innings 2): Win by an innings for Team 1.");
                     endMatch();
-                    return; // Crucial: Exit after ending the match
+                    return;
                 }
             }
 
-            // Scenario 2: After Innings 3 (Team 1's 2nd innings) - Potential win by an innings for Team 2 (if Team 1's cumulative is too low)
+            // Scenario 2: After Innings 3 (Team 1's 2nd innings) - Potential win by an innings for Team 2
+            // This happens if Team 1's total from two innings is less than or equal to Team 2's first innings score
             if (gameState.innings === 3) {
                 const team1TotalRuns = (gameState.teams[team1Id].inningsScores[0]?.runs || 0) + (gameState.teams[team1Id].inningsScores[1]?.runs || 0);
                 const team2FirstInningsRuns = (gameState.teams[team2Id].inningsScores[0]?.runs || 0);
 
                 if (team1TotalRuns <= team2FirstInningsRuns) {
-                    // Team 2 wins by an innings (Team 1's total from two innings couldn't surpass Team 2's first innings)
                     gameState.testMatchState.matchFinishedByInningsWin = true;
                     gameState.matchResult = `${gameState.teams[team2Id].name} won by an innings and ${team2FirstInningsRuns - team1TotalRuns} runs!`;
                     console.log("TEST MATCH ENDED (Innings 3): Win by an innings for Team 2.");
                     endMatch();
-                    return; // Crucial: Exit after ending the match
+                    return;
                 }
             }
 
-            // Scenario 3: After Innings 4 (Team 2's 2nd innings) - Final result calculation
+            // Scenario 3: After Innings 4 (Team 2's 2nd innings) - Final match conclusion
             if (gameState.innings === 4) {
                 console.log("TEST MATCH ENDED (Innings 4): Final results.");
                 endMatch();
-                return; // Crucial: Exit after ending the match
+                return;
             }
 
             // --- If match not ended, prepare for next innings ---
             gameState.innings++; // Progress to the next innings (will be 2, 3, or 4)
+            console.log(`Incremented gameState.innings to ${gameState.innings}`);
 
             // Reset current innings score state for the next batting team
             resetCurrentInningsScoreState();
 
             // Determine next batting team and set `isUserBatting` accordingly
-            const battingOrder = [team1Id, team2Id, team1Id, team2Id];
-            gameState.currentBattingTeamId = battingOrder[gameState.innings - 1];
+            const battingOrder = [team1Id, team2Id, team1Id, team2Id]; // Maps overall innings (1-indexed) to team IDs
+            gameState.currentBattingTeamId = battingOrder[gameState.innings - 1]; // Use 0-indexed array
             gameState.isUserBatting = (gameState.currentBattingTeamId === gameState.userTeamId);
+            console.log(`Next batting team: ${gameState.teams[gameState.currentBattingTeamId].name}`);
 
             // Calculate target for Innings 4 if we are moving to it
             if (gameState.innings === 4) {
                 const team1TotalRuns = (gameState.teams[team1Id].inningsScores[0]?.runs || 0) + (gameState.teams[team1Id].inningsScores[1]?.runs || 0);
                 const team2FirstInningsRuns = (gameState.teams[team2Id].inningsScores[0]?.runs || 0);
                 gameState.target = team1TotalRuns - team2FirstInningsRuns + 1;
-                if (gameState.target <= 0) gameState.target = 1; // Safety net for target
+                if (gameState.target <= 0) gameState.target = 1; // Safety net: target must be at least 1
             } else {
                 gameState.target = 0; // No target for innings 1, 2, 3
             }
+            console.log(`Current target: ${gameState.target}`);
+
 
             // Update lead/trail message
             gameState.testMatchState.currentLeadTrailMessage = calculateTestLeadTrailMessage();
-
-            console.log(`Transitioning to Innings ${gameState.innings}. Next batting: ${gameState.teams[gameState.currentBattingTeamId].name}. Target: ${gameState.target}`);
+            console.log(`New lead/trail message: ${gameState.testMatchState.currentLeadTrailMessage}`);
+            console.log(`--- handleTestMatchInningsEnd END ---`);
             showInningsBreakMessage();
         };
 
@@ -1305,7 +1317,7 @@ Player Name Y (Batter)
                     if (runsNeeded > 0) {
                         message = `${gameState.teams[team2Id].name} needs ${runsNeeded} runs to win.`;
                     } else {
-                        message = `${gameState.teams[team2Id].name} has reached the target!`;
+                        message = `${gameState.teams[team2Id].name} has reached the target!`; // This doesn't mean they won yet, just hit target
                     }
                 }
             }
@@ -1417,35 +1429,34 @@ Player Name Y (Batter)
                 const team2Name = gameState.teams[team2Id].name;
 
                 if (gameState.testMatchState.matchFinishedByInningsWin) {
-                    // Result already set in handleTestMatchInningsEnd
+                    // Result already set by handleTestMatchInningsEnd (win by an innings)
                     resultLine = gameState.matchResult;
                     winnerTeamName = (resultLine.includes(team1Name)) ? team1Name : team2Name;
                 } else {
-                    // Only reach here if all 4 innings are completed without an innings win
+                    // All 4 innings completed, or 4th innings ended early by target chase/all out/overs
                     const team1TotalRuns = (gameState.teams[team1Id].inningsScores[0]?.runs || 0) + (gameState.teams[team1Id].inningsScores[1]?.runs || 0);
-                    const team2TotalRuns = (gameState.teams[team2Id].inningsScores[0]?.runs || 0) + (gameState.teams[team2Id].inningsScores[1]?.runs || 0);
+                    const team2TotalRunsInnings1 = (gameState.teams[team2Id].inningsScores[0]?.runs || 0);
+                    const team2CurrentInnings4Score = gameState.score.batting.runs; // Current runs of the chasing team in Innings 4
 
-                    // Check for Team 2 winning by chasing the target in Innings 4
-                    if (gameState.innings === 4 && gameState.score.batting.runs >= gameState.target) {
+                    // Scenario 1: Team 2 (chasing team in innings 4) wins by wickets
+                    if (gameState.innings === 4 && team2CurrentInnings4Score >= gameState.target) {
                         winnerTeamId = team2Id;
                         winnerTeamName = team2Name;
                         const wicketsRemaining = 10 - gameState.score.batting.wickets;
                         resultLine = `${winnerTeamName} won by ${wicketsRemaining} wickets`;
                     }
-                    // Check for Team 1 winning by runs (Team 2 failed to chase target, and Team 1 has more total runs)
-                    else if (team1TotalRuns > team2TotalRuns) {
+                    // Scenario 2: Team 1 wins by runs (Team 2 failed to chase target in innings 4)
+                    else if (gameState.innings === 4 && team2CurrentInnings4Score < gameState.target) {
+                        // Team 1 set the target based on their cumulative runs minus Team 2's first innings.
+                        // If Team 2 didn't reach it, Team 1 wins by the margin of runs (target - 1 - Team 2's final score)
                         winnerTeamId = team1Id;
                         winnerTeamName = team1Name;
-                        const runMargin = team1TotalRuns - team2TotalRuns;
-                        resultLine = `${winnerTeamName} won by ${runMargin} runs`;
+                        const finalRunDifference = (team1TotalRuns - team2TotalRunsInnings1) - team2CurrentInnings4Score; // Total score diff after 4 innings
+                        resultLine = `${winnerTeamName} won by ${finalRunDifference} runs`;
                     }
-                    // Check for a Tie (scores are exactly equal *and* target reached *or* team 2 all out)
-                    else if (team1TotalRuns === team2TotalRuns && gameState.innings === 4 && gameState.score.batting.wickets === 10 && gameState.score.batting.runs === team2TotalRuns - (gameState.teams[team2Id].inningsScores[0]?.runs || 0)) {
-                        // This implies Team 2 reached the exact target on the last ball/wicket, and is all out.
-                        resultLine = `The match was tied!`;
-                        winnerTeamName = "No Winner";
-                    }
-                    // If 4 innings completed, no winner, and not a tie, it's a draw.
+                    // Scenario 3: Draw (should only happen if all 4 innings are fully completed and no win condition met)
+                    // The above `else if` for Team 1 win covers when team 2 is all out or overs run out before target.
+                    // So, if we reach here after innings 4, it means it must be a draw.
                     else {
                         resultLine = `The match was drawn!`;
                         winnerTeamName = "No Winner";
@@ -1524,6 +1535,8 @@ Player Name Y (Batter)
                 const inningsScore = team.inningsScores[inningsIndex]; // Specific innings score
                 const inningsPlayersSnapshot = team.inningsScorecardHistory[inningsIndex]; // Specific innings player snapshot
 
+                console.log(`Getting innings details for ${team.name}, team-specific index ${inningsIndex}. Score:`, inningsScore, "Snapshot:", inningsPlayersSnapshot);
+
                 if (!inningsScore || !inningsPlayersSnapshot) return null;
 
                 // For summary, top batsmen are based on their performance in *that specific innings*
@@ -1569,6 +1582,8 @@ Player Name Y (Batter)
                 innings3Summary = getInningsDetails(gameState.testMatchState.team1Id, 1); // Team 1's 2nd innings (actual innings #3)
                 innings4Summary = getInningsDetails(gameState.testMatchState.team2Id, 1); // Team 2's 2nd innings (actual innings #4)
             }
+            console.log("Summary details:", {innings1Summary, innings2Summary, innings3Summary, innings4Summary});
+
 
             // Determine Man of the Match based on match-total player stats
             const allPlayers = [...teamA.players, ...teamB.players];
@@ -1636,7 +1651,7 @@ Player Name Y (Batter)
                         const playerKey = `${playerInInnings.name}_${team.name}`;
                         if (playerInInnings.R >= 100) {
                             matchHundreds.set(playerKey, (matchHundreds.get(playerKey) || 0) + 1);
-                        } else if (playerInInnings.R >= 50) {
+                        } else if (playerInInnings.R >= 50 && playerInInnings.R < 100) { // Only count as 50 if not also a 100
                             matchFifties.set(playerKey, (matchFifties.get(playerKey) || 0) + 1);
                         }
                     });
@@ -2004,7 +2019,7 @@ Player Name Y (Batter)
             const teamName = gameState.teams[teamId].name;
 
             // Find the input element to revert its value if needed
-            const inputElement = document.querySelector(`#app .grid > div:nth-child(${teamId === 'A' ? 1 : 2}) .space-y-2 > div:nth-child(${index + 1}) > input`);
+            const inputElement = document.getElementById(`${teamId}-player-${index}-name`);
 
             if (newNameTrimmed === '' || newNameTrimmed === oldName) {
                 // No actual change or empty name, revert or keep current name.
