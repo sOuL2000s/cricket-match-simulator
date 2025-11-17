@@ -152,8 +152,8 @@ Player Name Y (Batter)
 
     <script>
         // --- CONSTANTS AND CONFIGURATION ---
-        const API_KEY = "AIzaSyCzx6ReMk8ohPJcCjGwHHzu7SvFccJqAbA"; // PASTE YOUR GEMINI API KEY HERE
-        const GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"; // Using a general purpose flash model for good balance
+        const API_KEY = "PASTE_YOUR_GEMINI_API_KEY_HERE"; // PASTE YOUR GEMINI API KEY HERE
+        const GEMINI_MODEL = "gemini-1.5-flash-latest"; // Using a general purpose flash model for good balance
         const LIMITED_OVERS_OPTIONS = [1, 5, 10, 20, 50]; // Available match lengths for Limited Overs
         const TEST_MATCH_OVERS = 90; // Fixed overs per innings for Test Match
         const LOCAL_STORAGE_KEY = 'diceCricketState';
@@ -1005,8 +1005,15 @@ Player Name Y (Batter)
                 }
             }
 
-            // checkInningsEnd will trigger endInnings (which in turn calls navigateTo or showInningsBreakMessage)
-            const inningsEnded = checkInningsEnd(); // Returns true if innings ended, false otherwise
+            const inningsEnded = checkInningsEnd();
+            
+            // *** FIX 1 & 2 START ***
+            // If the innings hasn't ended, we must manually re-render the screen to show the updated score.
+            // If the innings HAS ended, checkInningsEnd() will have triggered a navigation which handles the render.
+            if (!inningsEnded) {
+                renderScreen();
+            }
+            // *** FIX 1 & 2 END ***
             
             return inningsEnded;
         };
@@ -1033,8 +1040,6 @@ Player Name Y (Batter)
                 endInnings(); // This will trigger navigateTo('summary') or showInningsBreakMessage()
                 return true; // Indicate innings ended
             }
-            // If innings did not end, we don't call renderScreen here.
-            // For manual play, this will be handled after handleRoll. For simulation, simulateMatch will.
             return false; // Indicate innings did not end
         };
 
@@ -1535,39 +1540,22 @@ Player Name Y (Batter)
                 const inningsScore = team.inningsScores[inningsIndex]; // Specific innings score
                 const inningsPlayersSnapshot = team.inningsScorecardHistory[inningsIndex]; // Specific innings player snapshot
 
-                console.log(`Getting innings details for ${team.name}, team-specific index ${inningsIndex}. Score:`, inningsScore, "Snapshot:", inningsPlayersSnapshot);
-
                 if (!inningsScore || !inningsPlayersSnapshot) return null;
 
-                // For summary, top batsmen are based on their performance in *that specific innings*
                 const topBatsmen = inningsPlayersSnapshot
                     .filter(p => p.R > 0)
                     .sort((a, b) => b.R - a.R)
                     .slice(0, 3)
                     .map(p => ({ name: p.name, runs: p.R, balls: p.B }));
-
-                // For bowlers, we'll still use match-total stats, as per-innings bowling data is complex to track and not explicitly requested for summary.
-                // The bowling team for an innings is the OTHER team, but top bowlers should represent overall match performance.
-                const bowlingTeamId = (teamId === 'A') ? 'B' : 'A'; // CORRECTED: Use string literals 'A' and 'B'
-                const bowlingTeam = gameState.teams[bowlingTeamId];
-
-                const bowlersWhoPlayed = bowlingTeam.players.filter(p => p.Runs > 0 || p.W > 0 || p.Balls > 0);
-                const topBowlers = bowlersWhoPlayed
-                    .sort((a, b) => b.W - a.W || a.Runs - b.Runs)
-                    .slice(0, 3)
-                    .map(p => ({
-                        name: p.name,
-                        overs: `${Math.floor(p.Balls / 6)}.${p.Balls % 6}`, // Match total balls bowled
-                        wickets: p.W || 0, // Match total wickets
-                        runs: p.Runs || 0, // Match total runs conceded
-                        econ: (p.Balls > 0) ? (p.Runs / (p.Balls / 6)).toFixed(2) : 0.0
-                    }));
+                
+                // *** FIX 3 NOTE ***
+                // Bowling stats are tracked for the whole match, not per innings.
+                // So we will calculate top bowlers for the whole match later, and remove them from this per-innings function.
 
                 return {
                     name: team.name,
                     score: `${inningsScore.runs}/${inningsScore.wickets} (${inningsScore.overs}.${inningsScore.balls} Overs)`,
                     topBatsmen,
-                    topBowlers, // These are match-total top bowlers
                 };
             };
 
@@ -1577,20 +1565,16 @@ Player Name Y (Batter)
                 innings1Summary = getInningsDetails(firstBattingOverallTeamId, 0);
                 innings2Summary = getInningsDetails(secondBattingOverallTeamId, 0);
             } else { // Test Match
-                innings1Summary = getInningsDetails(gameState.testMatchState.team1Id, 0); // Team 1's 1st innings (actual innings #1)
-                innings2Summary = getInningsDetails(gameState.testMatchState.team2Id, 0); // Team 2's 1st innings (actual innings #2)
-                innings3Summary = getInningsDetails(gameState.testMatchState.team1Id, 1); // Team 1's 2nd innings (actual innings #3)
-                innings4Summary = getInningsDetails(gameState.testMatchState.team2Id, 1); // Team 2's 2nd innings (actual innings #4)
+                innings1Summary = getInningsDetails(gameState.testMatchState.team1Id, 0);
+                innings2Summary = getInningsDetails(gameState.testMatchState.team2Id, 0);
+                innings3Summary = getInningsDetails(gameState.testMatchState.team1Id, 1);
+                innings4Summary = getInningsDetails(gameState.testMatchState.team2Id, 1);
             }
-            console.log("Summary details:", {innings1Summary, innings2Summary, innings3Summary, innings4Summary});
 
-
-            // Determine Man of the Match based on match-total player stats
             const allPlayers = [...teamA.players, ...teamB.players];
             let bestImpact = { name: 'N/A', score: -Infinity, type: '', teamName: '' };
 
             allPlayers.forEach(p => {
-                // Only consider players who actually participated (faced balls or bowled balls)
                 if (p.B > 0 || p.Balls > 0) {
                     const impact = (p.R * 1.5) + (p.W * 15) - (p.Runs * 0.5);
                     const team = teamA.players.includes(p) ? teamA : teamB;
@@ -1615,6 +1599,24 @@ Player Name Y (Batter)
                 }
             }
 
+            // *** FIX 3 START ***
+            // Calculate Top Bowlers for the entire match
+            const allBowlersInMatch = allPlayers.filter(p => p.Balls > 0);
+            const topMatchBowlers = allBowlersInMatch
+                .sort((a, b) => b.W - a.W || a.Runs - b.Runs) // Sort by wickets, then runs conceded
+                .slice(0, 5) // Get top 5 bowlers of the match
+                .map(p => {
+                    const teamName = teamA.players.includes(p) ? teamA.name : teamB.name;
+                    return {
+                        name: p.name,
+                        teamName: teamName,
+                        overs: `${Math.floor(p.Balls / 6)}.${p.Balls % 6}`,
+                        wickets: p.W || 0,
+                        runs: p.Runs || 0,
+                        econ: (p.Balls > 0) ? (p.Runs / (p.Balls / 6)).toFixed(2) : '0.00'
+                    };
+                });
+            // *** FIX 3 END ***
 
             return {
                 matchDate: new Date().toLocaleDateString(),
@@ -1622,10 +1624,10 @@ Player Name Y (Batter)
                 innings2: innings2Summary,
                 innings3: innings3Summary,
                 innings4: innings4Summary,
+                topMatchBowlers: topMatchBowlers, // Add the overall top bowlers to the summary
                 resultLine: resultLine,
                 manOfTheMatch: bestImpact,
                 gameMode: gameState.gameMode,
-                // Only include testLeadTrailMessage if it's a Test match AND the result wasn't an innings win
                 testLeadTrailMessage: gameState.gameMode === 'test_match' && !resultLine.includes("won by an innings") ? calculateTestLeadTrailMessage() : ''
             };
         };
@@ -1639,8 +1641,6 @@ Player Name Y (Batter)
                 gameMode: summary.gameMode
             });
 
-            // Calculate match-specific 50s and 100s
-            // Maps to store 50s/100s for players in the current match only, keyed by player_team name
             const matchFifties = new Map();
             const matchHundreds = new Map();
 
@@ -1651,7 +1651,7 @@ Player Name Y (Batter)
                         const playerKey = `${playerInInnings.name}_${team.name}`;
                         if (playerInInnings.R >= 100) {
                             matchHundreds.set(playerKey, (matchHundreds.get(playerKey) || 0) + 1);
-                        } else if (playerInInnings.R >= 50 && playerInInnings.R < 100) { // Only count as 50 if not also a 100
+                        } else if (playerInInnings.R >= 50 && playerInInnings.R < 100) {
                             matchFifties.set(playerKey, (matchFifties.get(playerKey) || 0) + 1);
                         }
                     });
@@ -1659,32 +1659,31 @@ Player Name Y (Batter)
             });
 
 
-            // Update Player Statistics (using match-total stats from player objects)
             const allPlayersInMatch = [...gameState.teams['A'].players, ...gameState.teams['B'].players];
             allPlayersInMatch.forEach(p => {
-                if (p.B > 0 || p.Balls > 0) { // Only update stats for players who actually participated
+                if (p.B > 0 || p.Balls > 0) {
                     const team = gameState.teams['A'].players.includes(p) ? gameState.teams['A'] : gameState.teams['B'];
                     const teamName = team.name;
-                    const key = `${p.name}_${teamName}`; // Unique key for player stats
+                    const key = `${p.name}_${teamName}`;
 
                     if (!globalRecords.playerStats[key]) {
                         globalRecords.playerStats[key] = {
                             name: p.name,
-                            teamName: teamName, // Use `teamName` here
+                            teamName: teamName,
                             R: 0, B: 0, W: 0, Runs: 0, Matches: 0, totalBallsBowled: 0,
                             topScore: 0,
                             bestBowlingFigure: { wickets: 0, runs: Infinity },
-                            fifties: 0,   // NEW
-                            hundreds: 0   // NEW
+                            fifties: 0,
+                            hundreds: 0
                         };
                     }
                     const stats = globalRecords.playerStats[key];
-                    stats.R += p.R; // Add match total runs
-                    stats.B += p.B; // Add match total balls faced
-                    stats.W += p.W; // Add match total wickets
-                    stats.Runs += p.Runs; // Add match total runs conceded
+                    stats.R += p.R;
+                    stats.B += p.B;
+                    stats.W += p.W;
+                    stats.Runs += p.Runs;
                     stats.Matches += 1;
-                    stats.totalBallsBowled += p.Balls; // Add match total balls bowled
+                    stats.totalBallsBowled += p.Balls;
 
                     if (p.R > stats.topScore) {
                         stats.topScore = p.R;
@@ -1695,15 +1694,13 @@ Player Name Y (Batter)
                         stats.bestBowlingFigure = { wickets: p.W, runs: p.Runs };
                     }
                     
-                    // Add match's 50s/100s to career totals
                     stats.fifties += matchFifties.get(key) || 0;
                     stats.hundreds += matchHundreds.get(key) || 0;
                 }
             });
 
-            // Check Best Batting/Bowling (Match-specific highest values)
             allPlayersInMatch.forEach(p => {
-                if (p.B > 0 || p.Balls > 0) { // Only consider players who actually played
+                if (p.B > 0 || p.Balls > 0) {
                     const team = gameState.teams['A'].players.includes(p) ? gameState.teams['A'] : gameState.teams['B'];
                     const teamName = team.name;
 
@@ -1734,11 +1731,6 @@ Player Name Y (Batter)
                         <ul class="list-disc list-inside ml-2 text-sm space-y-1">
                             ${innings.topBatsmen.map(p => `<li>${p.name}: ${p.runs} runs (${p.balls} balls)</li>`).join('') || '<li>No significant batting.</li>'}
                         </ul>
-
-                        <h4 class="font-bold mt-3 border-b border-gray-200 pb-1">Top Bowlers (Match Total)</h4>
-                        <ul class="list-disc list-inside ml-2 text-sm space-y-1">
-                            ${innings.topBowlers.map(p => `<li>${p.name}: ${p.overs} O, ${p.wickets}/${p.runs} (Econ: ${p.econ})</li>`).join('') || '<li>No significant bowling.</li>'}
-                        </ul>
                     </div>
                 `;
             };
@@ -1764,7 +1756,7 @@ Player Name Y (Batter)
                     <div class="text-center mb-10 p-6 bg-yellow-50 rounded-xl border-4 border-cricket-gold">
                         <h3 class="text-xl font-bold text-gray-700">MAN OF THE MATCH</h3>
                         <p class="text-4xl font-extrabold text-cricket-green mt-2">${summary.manOfTheMatch.name}</p>
-                        <p class="text-lg text-gray-600">(${summary.manOfTheMatch.type} Performance for ${summary.manOfTheMatch.teamName})</p>
+                        <p class="text-lg text-gray-600">(${summary.manOfTheMatch.teamName})</p>
                     </div>
 
                     ${summary.gameMode === 'limited_overs' ? `
@@ -1798,6 +1790,17 @@ Player Name Y (Batter)
                             </div>
                         </div>
                     `}
+                    
+                    <!-- *** FIX 3 START: New Bowler Summary Section *** -->
+                    <div class="mt-8">
+                        <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Top Bowlers (Overall Match)</h3>
+                        <div class="p-4 bg-gray-50 rounded-lg shadow-inner">
+                            <ul class="list-disc list-inside ml-2 text-sm space-y-1">
+                                ${summary.topMatchBowlers.map(p => `<li>${p.name} (${p.teamName}): <strong>${p.wickets}/${p.runs}</strong> (${p.overs} O, Econ: ${p.econ})</li>`).join('') || '<li>No significant bowling performances.</li>'}
+                            </ul>
+                        </div>
+                    </div>
+                    <!-- *** FIX 3 END *** -->
 
                     <!-- Gemini Commentary Section (Optional) -->
                     <div class="mt-8 pt-6 border-t border-gray-200">
