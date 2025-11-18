@@ -158,6 +158,139 @@ Player Name Y (Batter)
         const TEST_MATCH_OVERS = 90; // Fixed overs per innings for Test Match
         const LOCAL_STORAGE_KEY = 'diceCricketState';
         const LOCAL_STORAGE_RECORDS_KEY = 'diceCricketRecords';
+        const VALID_ROLES = ['Batter', 'Wicket Keeper', 'All Rounder', 'Bowler']; // For validation
+
+        // --- PRESET TEAMS DATA ---
+        const PRESET_TEAMS_DATA = {
+            'India': {
+                name: 'India',
+                players: [
+                    { name: "Sunil Gavaskar", role: "Batter" },
+                    { name: "Sachin Tendulkar", role: "Batter" },
+                    { name: "Virat Kohli", role: "Batter" },
+                    { name: "Rahul Dravid", role: "Batter" },
+                    { name: "Sourav Ganguly", role: "Batter" },
+                    { name: "MS Dhoni", role: "Wicket Keeper" },
+                    { name: "Kapil Dev", role: "All Rounder" },
+                    { name: "Ravichandran Ashwin", role: "Bowler" },
+                    { name: "Anil Kumble", role: "Bowler" },
+                    { name: "Zaheer Khan", role: "Bowler" },
+                    { name: "Jasprit Bumrah", role: "Bowler" }
+                ]
+            },
+            'Australia': {
+                name: 'Australia',
+                players: [
+                    { name: "Matthew Hayden", role: "Batter" },
+                    { name: "David Warner", role: "Batter" },
+                    { name: "Don Bradman", role: "Batter" },
+                    { name: "Ricky Ponting", role: "Batter" },
+                    { name: "Steve Smith", role: "Batter" },
+                    { name: "Shane Watson", role: "All Rounder" },
+                    { name: "Adam Gilchrist", role: "Wicket Keeper" },
+                    { name: "Shane Warne", role: "Bowler" },
+                    { name: "Dennis Lillee", role: "Bowler" },
+                    { name: "Glenn McGrath", role: "Bowler" },
+                    { name: "Brett Lee", role: "Bowler" }
+                ]
+            },
+            'New Zealand': {
+                name: 'New Zealand',
+                players: [
+                    { name: "Martin Guptill", role: "Batter" },
+                    { name: "Brendon McCullum", role: "Wicket Keeper" },
+                    { name: "Kane Williamson", role: "Batter" },
+                    { name: "Ross Taylor", role: "Batter" },
+                    { name: "Stephen Fleming", role: "Batter" },
+                    { name: "Corey Anderson", role: "All Rounder" },
+                    { name: "Chris Cairns", role: "All Rounder" },
+                    { name: "Daniel Vettori", role: "Bowler" },
+                    { name: "Tim Southee", role: "Bowler" },
+                    { name: "Trent Boult", role: "Bowler" },
+                    { name: "Shane Bond", role: "Bowler" }
+                ]
+            },
+            'South Africa': {
+                name: 'South Africa',
+                players: [
+                    { name: "Hashim Amla", role: "Batter" },
+                    { name: "Graeme Smith", role: "Batter" },
+                    { name: "Jacques Kallis", role: "All Rounder" },
+                    { name: "AB de Villiers", role: "Wicket Keeper" },
+                    { name: "Faf du Plessis", role: "Batter" },
+                    { name: "Quinton de Kock", role: "Batter" },
+                    { name: "Shaun Pollock", role: "All Rounder" },
+                    { name: "Dale Steyn", role: "Bowler" },
+                    { name: "Allan Donald", role: "Bowler" },
+                    { name: "Morne Morkel", role: "Bowler" },
+                    { name: "Imran Tahir", role: "Bowler" }
+                ]
+            },
+            'Pakistan': {
+                name: 'Pakistan',
+                players: [
+                    { name: "Saeed Anwar", role: "Batter" },
+                    { name: "Fakhar Zaman", role: "Batter" },
+                    { name: "Babar Azam", role: "Batter" },
+                    { name: "Mohammad Yousuf", role: "Batter" },
+                    { name: "Inzamam-ul-Haq", role: "Batter" },
+                    { name: "Shahid Afridi", role: "All Rounder" },
+                    { name: "Imran Khan", role: "All Rounder" },
+                    { name: "Wasim Akram", role: "Bowler" },
+                    { name: "Waqar Younis", role: "Bowler" },
+                    { name: "Shoaib Akhtar", role: "Bowler" },
+                    { name: "Saqlain Mushtaq", role: "Bowler" }
+                ]
+            },
+            'England': {
+                name: 'England',
+                players: [
+                    { name: "Alastair Cook", role: "Batter" },
+                    { name: "Jason Roy", role: "Batter" },
+                    { name: "Joe Root", role: "Batter" },
+                    { name: "Kevin Pietersen", role: "Batter" },
+                    { name: "Ben Stokes", role: "All Rounder" },
+                    { name: "Jos Buttler", role: "Wicket Keeper" },
+                    { name: "Andrew Flintoff", role: "All Rounder" },
+                    { name: "Ian Botham", role: "All Rounder" },
+                    { name: "James Anderson", role: "Bowler" },
+                    { name: "Stuart Broad", role: "Bowler" },
+                    { name: "Adil Rashid", role: "Bowler" }
+                ]
+            },
+            'Sri Lanka': {
+                name: 'Sri Lanka',
+                players: [
+                    { name: "Sanath Jayasuriya", role: "All Rounder" },
+                    { name: "Tillakaratne Dilshan", role: "Batter" },
+                    { name: "Kumar Sangakkara", role: "Wicket Keeper" },
+                    { name: "Mahela Jayawardene", role: "Batter" },
+                    { name: "Aravinda de Silva", role: "Batter" },
+                    { name: "Angelo Mathews", role: "All Rounder" },
+                    { name: "Chamara Silva", role: "Batter" },
+                    { name: "Chaminda Vaas", role: "Bowler" },
+                    { name: "Lasith Malinga", role: "Bowler" },
+                    { name: "Muttiah Muralitharan", role: "Bowler" },
+                    { name: "Rangana Herath", role: "Bowler" }
+                ]
+            },
+            'West Indies': {
+                name: 'West Indies',
+                players: [
+                    { name: "Chris Gayle", role: "Batter" },
+                    { name: "Gordon Greenidge", role: "Batter" },
+                    { name: "Viv Richards", role: "Batter" },
+                    { name: "Brian Lara", role: "Batter" },
+                    { name: "Shivnarine Chanderpaul", role: "Batter" },
+                    { name: "Kieron Pollard", role: "All Rounder" },
+                    { name: "Dwayne Bravo", role: "All Rounder" },
+                    { name: "Malcolm Marshall", role: "Bowler" },
+                    { name: "Curtly Ambrose", role: "Bowler" },
+                    { name: "Courtney Walsh", role: "Bowler" },
+                    { name: "Sunil Narine", role: "Bowler" }
+                ]
+            }
+        };
 
         // --- GLOBAL STATE ---
         let gameState = {};
@@ -169,7 +302,7 @@ Player Name Y (Batter)
             currentSort: { column: 'R', direction: 'desc' } // Default sort for player stats
         };
 
-        // Default player names for 11 players
+        // Default player names for 11 players - used as fallback in bulk edit
         const DEFAULT_PLAYERS = [
             "Batter 1", "Batter 2", "All Rounder 3", "All Rounder 4",
             "Wicket Keeper 5", "Bowler 6", "Bowler 7", "Bowler 8",
@@ -180,7 +313,7 @@ Player Name Y (Batter)
             'Wicket Keeper', 'Bowler', 'Bowler', 'Bowler',
             'Bowler', 'Bowler', 'Bowler'
         ];
-        const VALID_ROLES = ['Batter', 'Wicket Keeper', 'All Rounder', 'Bowler']; // For validation
+
 
         // Player initial stat structure for a SINGLE MATCH (these accumulate over all innings in a match)
         const getNewPlayerStats = (name, role) => ({
@@ -227,6 +360,10 @@ Player Name Y (Batter)
             oversPerInnings: LIMITED_OVERS_OPTIONS[0], // Actual overs for current match type/settings
             isSimulating: false, // NEW: flag to indicate if simulation is active
 
+            // NEW: Track selected preset keys for initial setup and display in dropdowns
+            selectedPresetTeamA: 'India',
+            selectedPresetTeamB: 'Australia',
+
             // Test match specific state
             testMatchState: {
                 team1Id: null, // Team that bats first overall (innings 1 & 3)
@@ -251,14 +388,14 @@ Player Name Y (Batter)
             },
             teams: {
                 'A': {
-                    name: 'Team A',
-                    players: DEFAULT_PLAYERS.map((name, idx) => getNewPlayerStats(name, DEFAULT_ROLES[idx])),
+                    name: PRESET_TEAMS_DATA['India'].name,
+                    players: PRESET_TEAMS_DATA['India'].players.map(p => getNewPlayerStats(p.name, p.role)),
                     inningsScorecardHistory: [], // Array of snapshot of player stats who have batted in each completed innings
                     inningsScores: [], // Array of { runs, wickets, overs, balls } for each completed innings (up to 2 for Test)
                 },
                 'B': {
-                    name: 'Team B',
-                    players: DEFAULT_PLAYERS.map((name, idx) => getNewPlayerStats(name, DEFAULT_ROLES[idx])),
+                    name: PRESET_TEAMS_DATA['Australia'].name,
+                    players: PRESET_TEAMS_DATA['Australia'].players.map(p => getNewPlayerStats(p.name, p.role)),
                     inningsScorecardHistory: [],
                     inningsScores: [],
                 }
@@ -314,7 +451,11 @@ Player Name Y (Batter)
                     ['A', 'B'].forEach(teamId => {
                         if (loadedState.teams?.[teamId]?.players && Array.isArray(loadedState.teams[teamId].players)) {
                             gameState.teams[teamId].players = loadedState.teams[teamId].players.map((loadedPlayer, idx) => {
-                                const defaultPlayer = getNewPlayerStats(DEFAULT_PLAYERS[idx], DEFAULT_ROLES[idx]);
+                                // Default player role based on a fallback or loaded role
+                                const defaultRole = DEFAULT_ROLES[idx] || 'Batter';
+                                const playerRole = VALID_ROLES.includes(loadedPlayer.role) ? loadedPlayer.role : defaultRole;
+                                
+                                const defaultPlayer = getNewPlayerStats(loadedPlayer.name || DEFAULT_PLAYERS[idx], playerRole);
                                 return {
                                     ...defaultPlayer, // Start with default structure to ensure all new properties exist
                                     ...loadedPlayer, // Overlay loaded properties (name, role, accumulated stats)
@@ -387,7 +528,9 @@ Player Name Y (Batter)
             const compTeamId = gameState.compTeamId;
             const selectedOvers = gameState.selectedOvers;
             const gameMode = gameState.gameMode;
-            // oversPerInnings is reset by getInitialGameState, then re-set by startNewMatch or setGameMode
+            // NEW: Preserve selected preset teams
+            const selectedPresetTeamA = gameState.selectedPresetTeamA;
+            const selectedPresetTeamB = gameState.selectedPresetTeamB;
 
             const playerA_details = gameState.teams['A'].players.map(p => ({ name: p.name, role: p.role }));
             const playerB_details = gameState.teams['B'].players.map(p => ({ name: p.name, role: p.role }));
@@ -401,6 +544,10 @@ Player Name Y (Batter)
             gameState.teams['B'].name = teamB_name;
             gameState.selectedOvers = selectedOvers;
             gameState.gameMode = gameMode;
+            // Restore new preset team selections
+            gameState.selectedPresetTeamA = selectedPresetTeamA;
+            gameState.selectedPresetTeamB = selectedPresetTeamB;
+
             // Restore oversPerInnings based on current gameMode
             gameState.oversPerInnings = (gameState.gameMode === 'test_match') ? TEST_MATCH_OVERS : gameState.selectedOvers;
 
@@ -517,6 +664,13 @@ Player Name Y (Batter)
             }
         };
 
+        // Helper to generate preset team options for dropdowns
+        const getPresetTeamOptions = (selectedKey) => {
+            return Object.keys(PRESET_TEAMS_DATA).map(key => `
+                <option value="${key}" ${selectedKey === key ? 'selected' : ''}>${PRESET_TEAMS_DATA[key].name}</option>
+            `).join('');
+        };
+
         // --- UI RENDERING FUNCTIONS ---
 
         const renderStartMenu = () => `
@@ -550,6 +704,26 @@ Player Name Y (Batter)
                     <div id="test-match-info" class="${gameState.gameMode === 'test_match' ? '' : 'hidden'} text-lg font-semibold text-gray-700 mt-2">
                         Test Match: ${TEST_MATCH_OVERS} Overs per Innings (4 Innings Total)
                     </div>
+                </div>
+
+                <!-- NEW: Preset Team Selection -->
+                <div class="mb-6 border-t pt-6 mt-6">
+                    <h3 class="text-xl font-bold mb-4 text-gray-700">Select Team Rosters:</h3>
+                    <div class="flex flex-col md:flex-row justify-center gap-4 mb-4">
+                        <div class="flex items-center space-x-2">
+                            <label for="team-a-preset-select" class="font-semibold text-cricket-green">Team A:</label>
+                            <select id="team-a-preset-select" class="p-2 border rounded-md shadow-sm" onchange="loadPresetTeam('A', this.value)">
+                                ${getPresetTeamOptions(gameState.selectedPresetTeamA)}
+                            </select>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <label for="team-b-preset-select" class="font-semibold text-cricket-green">Team B:</label>
+                            <select id="team-b-preset-select" class="p-2 border rounded-md shadow-sm" onchange="loadPresetTeam('B', this.value)">
+                                ${getPresetTeamOptions(gameState.selectedPresetTeamB)}
+                            </select>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-4">You can further customize player names and roles in the "Edit Teams" menu.</p>
                 </div>
 
                 <div class="space-y-4">
@@ -1007,13 +1181,11 @@ Player Name Y (Batter)
 
             const inningsEnded = checkInningsEnd();
             
-            // *** FIX 1 & 2 START ***
             // If the innings hasn't ended, we must manually re-render the screen to show the updated score.
             // If the innings HAS ended, checkInningsEnd() will have triggered a navigation which handles the render.
             if (!inningsEnded) {
                 renderScreen();
             }
-            // *** FIX 1 & 2 END ***
             
             return inningsEnded;
         };
@@ -1548,7 +1720,6 @@ Player Name Y (Batter)
                     .slice(0, 3)
                     .map(p => ({ name: p.name, runs: p.R, balls: p.B }));
                 
-                // *** FIX 3 NOTE ***
                 // Bowling stats are tracked for the whole match, not per innings.
                 // So we will calculate top bowlers for the whole match later, and remove them from this per-innings function.
 
@@ -1599,7 +1770,6 @@ Player Name Y (Batter)
                 }
             }
 
-            // *** FIX 3 START ***
             // Calculate Top Bowlers for the entire match
             const allBowlersInMatch = allPlayers.filter(p => p.Balls > 0);
             const topMatchBowlers = allBowlersInMatch
@@ -1616,8 +1786,7 @@ Player Name Y (Batter)
                         econ: (p.Balls > 0) ? (p.Runs / (p.Balls / 6)).toFixed(2) : '0.00'
                     };
                 });
-            // *** FIX 3 END ***
-
+            
             return {
                 matchDate: new Date().toLocaleDateString(),
                 innings1: innings1Summary,
@@ -1791,7 +1960,7 @@ Player Name Y (Batter)
                         </div>
                     `}
                     
-                    <!-- *** FIX 3 START: New Bowler Summary Section *** -->
+                    <!-- New Bowler Summary Section -->
                     <div class="mt-8">
                         <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Top Bowlers (Overall Match)</h3>
                         <div class="p-4 bg-gray-50 rounded-lg shadow-inner">
@@ -1800,7 +1969,7 @@ Player Name Y (Batter)
                             </ul>
                         </div>
                     </div>
-                    <!-- *** FIX 3 END *** -->
+                    <!-- End New Bowler Summary Section -->
 
                     <!-- Gemini Commentary Section (Optional) -->
                     <div class="mt-8 pt-6 border-t border-gray-200">
@@ -1977,7 +2146,7 @@ Player Name Y (Batter)
                     </div>
 
                     <!-- Match History -->
-                    <h3 class="text-2xl font-bold mb-4 text-gray-700 border-b pb-2">Match History (${records.matchHistory.length} Total)</h3>
+                    <h3 class="2xl font-bold mb-4 text-gray-700 border-b pb-2">Match History (${records.matchHistory.length} Total)</h3>
                     <div class="overflow-x-auto card">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-100">
@@ -2010,8 +2179,29 @@ Player Name Y (Batter)
 
         /** Updates the team name in the game state. */
         const updateTeamName = (teamId, newName) => {
-            gameState.teams[teamId].name = newName.trim() || `Team ${teamId}`;
+            const oldName = gameState.teams[teamId].name;
+            const newNameTrimmed = newName.trim();
+            if (newNameTrimmed === oldName || newNameTrimmed === "") {
+                // No effective change or empty name, revert or keep current name.
+                document.getElementById(`${teamId}-name`).value = oldName;
+                return;
+            }
+
+            // Update playerStats keys if team name changes
+            const playersToUpdate = gameState.teams[teamId].players;
+            playersToUpdate.forEach(player => {
+                const oldKey = `${player.name}_${oldName}`;
+                const newKey = `${player.name}_${newNameTrimmed}`;
+                if (globalRecords.playerStats[oldKey]) {
+                    globalRecords.playerStats[newKey] = globalRecords.playerStats[oldKey];
+                    globalRecords.playerStats[newKey].teamName = newNameTrimmed; // Update team name within the stats object
+                    delete globalRecords.playerStats[oldKey];
+                }
+            });
+
+            gameState.teams[teamId].name = newNameTrimmed;
             saveState();
+            renderScreen(); // Re-render to update any displayed team names
         };
 
         /** Updates a specific player's name in the game state. */
@@ -2119,6 +2309,41 @@ Player Name Y (Batter)
                 [players[index], players[targetIndex]] = [players[targetIndex], players[index]];
                 saveState();
                 renderScreen();
+            }
+        };
+
+        // NEW: Function to load a preset team into a specific team slot (A or B)
+        const loadPresetTeam = (teamId, presetKey) => {
+            const preset = PRESET_TEAMS_DATA[presetKey];
+            if (preset) {
+                gameState.teams[teamId].name = preset.name;
+                // Map preset players to the game's player stats structure
+                gameState.teams[teamId].players = preset.players.map(p => getNewPlayerStats(p.name, p.role));
+                
+                // Update which preset key is selected for the dropdown to reflect this
+                if (teamId === 'A') {
+                    gameState.selectedPresetTeamA = presetKey;
+                } else {
+                    gameState.selectedPresetTeamB = presetKey;
+                }
+
+                // Ensure global records are initialized for these players if they haven't played yet
+                gameState.teams[teamId].players.forEach(p => {
+                    const key = `${p.name}_${gameState.teams[teamId].name}`;
+                    if (!globalRecords.playerStats[key]) {
+                        globalRecords.playerStats[key] = {
+                            name: p.name,
+                            teamName: gameState.teams[teamId].name,
+                            R: 0, B: 0, W: 0, Runs: 0, Matches: 0, totalBallsBowled: 0,
+                            topScore: 0,
+                            bestBowlingFigure: { wickets: 0, runs: Infinity },
+                            fifties: 0,
+                            hundreds: 0
+                        };
+                    }
+                });
+                saveState();
+                renderScreen(); // Re-render to update dropdowns and potentially team names in buttons
             }
         };
 
@@ -2277,12 +2502,30 @@ ${input}`;
                 if (!parsedTeamData || !parsedTeamData.name || !parsedTeamData.players) {
                     return;
                 }
+                // When bulk editing, this becomes a custom team, so reset preset tracking
+                if (teamId === 'A') gameState.selectedPresetTeamA = null;
+                if (teamId === 'B') gameState.selectedPresetTeamB = null;
 
-                gameState.teams[teamId].name = parsedTeamData.name.trim() || `Team ${teamId}`;
+                // Handle team name change first to correctly update playerStat keys
+                const oldTeamName = gameState.teams[teamId].name;
+                const newTeamName = parsedTeamData.name.trim() || `Team ${teamId}`;
+                gameState.teams[teamId].name = newTeamName;
+
+                // Iterate through existing players in globalRecords to rename keys and update teamName property
+                const existingPlayerKeys = Object.keys(globalRecords.playerStats);
+                existingPlayerKeys.forEach(key => {
+                    if (key.endsWith(`_${oldTeamName}`)) {
+                        const playerName = key.substring(0, key.lastIndexOf('_'));
+                        const newKey = `${playerName}_${newTeamName}`;
+                        if (oldTeamName !== newTeamName) { // Only rename if team name actually changed
+                            globalRecords.playerStats[newKey] = globalRecords.playerStats[key];
+                            globalRecords.playerStats[newKey].teamName = newTeamName;
+                            delete globalRecords.playerStats[key];
+                        }
+                    }
+                });
 
                 const newPlayers = [];
-                const currentTeamName = gameState.teams[teamId].name;
-
                 parsedTeamData.players.slice(0, 11).forEach(parsedPlayer => {
                     if (parsedPlayer.name && parsedPlayer.name.trim() !== '') {
                         const newPlayerName = parsedPlayer.name.trim();
@@ -2292,12 +2535,12 @@ ${input}`;
                         const playerForMatch = getNewPlayerStats(newPlayerName, newPlayerRole);
                         newPlayers.push(playerForMatch);
 
-                        const existingStatsKey = `${newPlayerName}_${currentTeamName}`;
+                        const existingStatsKey = `${newPlayerName}_${newTeamName}`;
                         if (!globalRecords.playerStats[existingStatsKey]) {
                             // Initialize new player's career stats if they don't exist
                             globalRecords.playerStats[existingStatsKey] = {
                                 name: newPlayerName,
-                                teamName: currentTeamName,
+                                teamName: newTeamName,
                                 R: 0, B: 0, W: 0, Runs: 0, Matches: 0, totalBallsBowled: 0,
                                 topScore: 0,
                                 bestBowlingFigure: { wickets: 0, runs: Infinity },
@@ -2314,11 +2557,11 @@ ${input}`;
                     const defaultPlayerRole = DEFAULT_ROLES[defaultIndex];
                     newPlayers.push(getNewPlayerStats(defaultPlayerName, defaultPlayerRole));
 
-                    const defaultPlayerKey = `${defaultPlayerName}_${currentTeamName}`;
+                    const defaultPlayerKey = `${defaultPlayerName}_${newTeamName}`;
                      if (!globalRecords.playerStats[defaultPlayerKey]) {
                          globalRecords.playerStats[defaultPlayerKey] = {
                              name: defaultPlayerName,
-                             teamName: currentTeamName,
+                             teamName: newTeamName,
                              R: 0, B: 0, W: 0, Runs: 0, Matches: 0, totalBallsBowled: 0,
                              topScore: 0,
                              bestBowlingFigure: { wickets: 0, runs: Infinity },
