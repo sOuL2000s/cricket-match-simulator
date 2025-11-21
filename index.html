@@ -152,7 +152,7 @@ Player Name Y (Batter)
 
     <script>
         // --- CONSTANTS AND CONFIGURATION ---
-        const API_KEY = "AIzaSyD7KfCynGxjHbPhr8bvP8Se0l8KrtyO0Ks"; // PASTE YOUR GEMINI API KEY HERE
+        const API_KEY = ""; // PASTE YOUR GEMINI API KEY HERE
         const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025"; // Using a general purpose flash model for good balance
         const LIMITED_OVERS_OPTIONS = [1, 5, 10, 20, 50]; // Available match lengths for Limited Overs
         const TEST_MATCH_OVERS = 90; // Fixed overs per innings for Test Match
@@ -857,7 +857,7 @@ Player Name Y (Batter)
             `;
         };
 
-        const renderMatchScreen = () => {
+            const renderMatchScreen = () => {
             const battingTeam = gameState.teams[gameState.currentBattingTeamId];
             const bowlingTeamId = (gameState.currentBattingTeamId === gameState.userTeamId) ? gameState.compTeamId : gameState.userTeamId;
             const bowlingTeam = gameState.teams[bowlingTeamId];
@@ -870,7 +870,7 @@ Player Name Y (Batter)
             const displayOvers = `${score.overs}.${score.balls}`;
             const targetDisplay = gameState.target > 0 ? `<span class="text-cricket-red font-semibold"> (Target: ${gameState.target})</span>` : '';
 
-            // Render Dice Container and Scoreboard dynamically
+            // Render Dice Container dynamically
             const diceContainer = `
                 <div class="flex flex-col md:flex-row justify-around items-center space-y-6 md:space-y-0 p-4 bg-gray-50 rounded-xl shadow-inner">
                     <div class="text-center">
@@ -887,6 +887,37 @@ Player Name Y (Batter)
                     </div>
                 </div>
             `;
+            
+            // --- NEW ACTION LOGIC ---
+            const isUserBatting = gameState.currentBattingTeamId === gameState.userTeamId;
+            const isUserBattingManually = isUserBatting && !gameState.isSimulating;
+            const simulationButtonText = gameState.isSimulating ? 'Stop Simulation' : (isUserBatting ? 'Simulate Innings' : 'Simulate Turn');
+
+            let primaryActionHtml = '';
+
+            if (isUserBattingManually) {
+                primaryActionHtml = `
+                    <div id="manual-roll-controls" class="w-full text-center mb-4">
+                        <h4 class="text-xl font-bold mb-3 text-gray-700">Choose Your Run Score (1-6):</h4>
+                        <div class="flex justify-center space-x-3">
+                            ${[1, 2, 3, 4, 5, 6].map(val => `
+                                <button onclick="handleManualRoll(${val})" class="w-12 h-12 flex items-center justify-center bg-cricket-green text-white rounded-lg font-bold text-lg hover:bg-green-700 transition transform hover:scale-110">
+                                    ${val}
+                                </button>
+                            `).join('')}
+                        </div>
+                        <p class="mt-4 text-sm text-gray-600">You choose the batting roll. Bowler's roll remains random.</p>
+                    </div>
+                `;
+            } else {
+                primaryActionHtml = `
+                    <button id="roll-button" onclick="handleRoll()" class="btn-primary flex-grow text-2xl ${gameState.isSimulating || gameState.matchResult ? 'opacity-50 cursor-not-allowed' : ''}" ${gameState.matchResult ? 'disabled' : ''}>
+                        ${isUserBatting ? 'ROLL THE DICE!' : 'Continue Computer Turn'}
+                    </button>
+                `;
+            }
+            // --- END NEW ACTION LOGIC ---
+
 
             return `
                 <div class="max-w-5xl mx-auto">
@@ -919,12 +950,12 @@ Player Name Y (Batter)
                         <!-- Dice & Action Panel (Center) -->
                         <div class="lg:col-span-2 bg-white p-6 card flex flex-col items-center">
                             ${diceContainer}
-                            <div class="flex flex-col sm:flex-row gap-4 w-full mt-6">
-                                <button id="roll-button" onclick="handleRoll()" class="btn-primary flex-grow text-2xl ${gameState.isSimulating || gameState.matchResult ? 'opacity-50 cursor-not-allowed' : ''}" ${gameState.isSimulating || gameState.matchResult ? 'disabled' : ''}>
-                                    ROLL THE DICE!
-                                </button>
-                                <button id="simulate-button" onclick="${gameState.isSimulating ? 'stopSimulation()' : 'simulateMatch()'}" class="btn-primary bg-purple-600 hover:bg-purple-700 flex-grow text-2xl ${gameState.matchResult ? 'opacity-50 cursor-not-allowed' : ''}" ${gameState.matchResult ? 'disabled' : ''}>
-                                    ${gameState.isSimulating ? 'Stop Simulation' : 'Simulate Match'}
+                            <div class="w-full mt-6">
+                                ${primaryActionHtml}
+                            </div>
+                            <div class="w-full mt-4">
+                                <button id="simulate-button" onclick="${gameState.isSimulating ? 'stopSimulation()' : 'simulateMatch()'}" class="btn-primary bg-purple-600 hover:bg-purple-700 w-full text-2xl ${gameState.matchResult ? 'opacity-50 cursor-not-allowed' : ''}" ${gameState.matchResult ? 'disabled' : ''}>
+                                    ${simulationButtonText}
                                 </button>
                             </div>
                         </div>
@@ -1141,9 +1172,20 @@ Player Name Y (Batter)
 
 
         /** Handles the logic for a single ball (dice roll). Returns true if innings ended, false otherwise. */
-        const handleRoll = async () => {
-            const batRoll = rollDice();
+        const handleRoll = async (manualBatRoll = null) => {
+            const isUserBatting = gameState.currentBattingTeamId === gameState.userTeamId;
+            let batRoll;
+
+            // Determine the Batsman's Roll
+            if (manualBatRoll !== null && isUserBatting && !gameState.isSimulating) {
+                batRoll = manualBatRoll; // Use the value chosen by the player
+            } else {
+                batRoll = rollDice(); // Random roll for simulation or computer turn
+            }
+            
+            // Bowler's Roll is always random
             const bowlRoll = rollDice();
+            
             const isOut = batRoll === bowlRoll;
             const runsScored = isOut ? 0 : batRoll;
 
@@ -1158,7 +1200,8 @@ Player Name Y (Batter)
                     batDiceContainer.classList.add('roll-animation');
                     bowlDiceContainer.classList.add('roll-animation');
                 }
-                await new Promise(resolve => setTimeout(resolve, 700)); // Wait for animation
+                // Wait for animation
+                await new Promise(resolve => setTimeout(resolve, 700)); 
                 if (batDiceContainer && bowlDiceContainer) {
                     batDiceContainer.classList.remove('roll-animation');
                     bowlDiceContainer.classList.remove('roll-animation');
@@ -1173,16 +1216,15 @@ Player Name Y (Batter)
             const actionMessage = document.getElementById('action-message');
             if (actionMessage) {
                 if (isOut) {
-                    actionMessage.innerHTML = `<span class="font-bold text-cricket-red">OUT!</span> Both rolled ${batRoll}.`;
+                    actionMessage.innerHTML = `<span class="font-bold text-cricket-red">OUT!</span> Batsman rolled ${batRoll}, Bowler rolled ${bowlRoll}.`;
                 } else {
-                    actionMessage.innerHTML = `<span class="font-bold text-cricket-green">Run!</span> Batsman rolled ${batRoll} and scores ${runsScored}.`;
+                    actionMessage.innerHTML = `<span class="font-bold text-cricket-green">Run!</span> Batsman rolled ${batRoll}, Bowler rolled ${bowlRoll}. Scores ${runsScored}.`;
                 }
             }
 
             const inningsEnded = checkInningsEnd();
             
-            // If the innings hasn't ended, we must manually re-render the screen to show the updated score.
-            // If the innings HAS ended, checkInningsEnd() will have triggered a navigation which handles the render.
+            // If the innings hasn't ended, we must manually re-render the screen
             if (!inningsEnded) {
                 renderScreen();
             }
@@ -1190,6 +1232,11 @@ Player Name Y (Batter)
             return inningsEnded;
         };
 
+        /** Handles the manual dice selection by the user when batting. */
+        const handleManualRoll = (batRollValue) => {
+            handleRoll(batRollValue);
+        };
+        
         /** Checks if the innings or match has ended. Returns true if innings ended, false otherwise. */
         const checkInningsEnd = () => {
             const score = gameState.score.batting;

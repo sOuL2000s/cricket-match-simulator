@@ -152,7 +152,7 @@ Player Name Y (Batter)
 
     <script>
         // --- CONSTANTS AND CONFIGURATION ---
-        const API_KEY = "AIzaSyCzx6ReMk8ohPJcCjGwHHzu7SvFccJqAbA"; // PASTE YOUR GEMINI API KEY HERE
+        const API_KEY = ""; // PASTE YOUR GEMINI API KEY HERE
         const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025"; // Using a general purpose flash model for good balance
         const LIMITED_OVERS_OPTIONS = [1, 5, 10, 20, 50]; // Available match lengths for Limited Overs
         const TEST_MATCH_OVERS = 90; // Fixed overs per innings for Test Match
@@ -2710,43 +2710,9 @@ ${input}`;
     </script>
 </body>
 </html>
-
---------------------
-
-add world cup mode
-make the world cup mode have two phases round robin and kknockout(semi finals and finals)
-include the 8 preset teams for world cup and 4 will qualify for semi finals.
-keep separate stats and records for world cup.
-make a point table in world cup.
-in the world cup mode user will be able to play all the matches by choosing a team.
-the world cup will be for all formats.
-
-You are an expert senior engineer and code reviewer. Your goals:
-
-Understand intent: Read the project description, issue text, and all provided code line-by-line. Summarize the author's purpose, premise, and intended user behavior in 2 short bullet points.
-
-Clarify only if necessary: If something blocks correct implementation (missing APIs, ambiguous requirement, unclear environment), list at most three short clarifying questions. If you can reasonably infer, choose the most likely interpretation and proceed; state your assumptions explicitly.
-
-Plan & map: Produce a concise implementation plan that maps each requested feature to exact changes: file paths, function/class names to edit, new files to add, and tests to write (unit/integration). Use one-line entries like + path/to/file.py — change function foo(): add X.
-
-Make precise edits: Provide exact patch-ready code (diff or full files) with minimal unrelated changes. Include code comments where logic is non-obvious.
-
-Tests & verification: Add or update automated tests that cover the new behavior and edge cases. Provide commands to run tests and example inputs/expected outputs.
-
-Safety & constraints: Respect stated performance, security, and backwards-compatibility constraints. If a proposed change breaks compatibility, flag it and provide a migration plan.
-
-Deliverables: Return:
-
-A succinct summary of intent & assumptions.
-
-The implementation plan.
-
-Patch-ready code (diffs or full file content).
-
-New/updated tests.
-
-How to run and verify locally (commands + sample outputs).
-
-A short changelog entry and a one-paragraph commit message.
-
-Communication style: Use precise, unambiguous language. Minimize questions; prefer safe assumptions. If you made assumptions, list them at the top of your plan.
+-------------------------
+send me code modifications for the following : 
+when a player chooses to play manually then let the user choose the dice move, it won't be random  for the user then.
+but when a player chooses to simulate then everything remains random.
+the computer's moves will always be random.
+i want to play world cup tournament also so for adding that into the game what to do? give me guidance.
