@@ -163,6 +163,7 @@ Player Name Y (Batter)
         const LOCAL_STORAGE_LEAGUE_STATE_KEY = 'diceCricketLeagueState';
 
         const VALID_ROLES = ['Batter', 'Wicket Keeper', 'All Rounder', 'Bowler']; // For validation
+        const ELIGIBLE_BOWLERS = ['All Rounder', 'Bowler']; // Roles allowed to bowl
 
         // --- PRESET TEAMS DATA ---
         const PRESET_TEAMS_DATA = {
@@ -388,7 +389,7 @@ Player Name Y (Batter)
                 },
                 bowling: {
                     overs: 0, balls: 0, wickets: 0, runsConceded: 0,
-                    currentBowlerIndex: 5, // Start with player 6 (index 5) as bowler for a new innings
+                    currentBowlerIndex: 5, // Default/Placeholder, will be set dynamically
                     lastBowlerIndex: -1 // Track the bowler who bowled the previous over, -1 indicates no previous bowler
                 },
             },
@@ -408,7 +409,14 @@ Player Name Y (Batter)
             }
         });
         
-        // --- LEAGUE STATE FACTORIES ---
+        // --- LEAGUE STATE FACTORIES & HELPERS ---
+        
+        /** Function to convert overs.balls to total balls. */
+        const oversToBalls = (overs, balls) => (overs * 6) + balls;
+
+        /** Function to convert total balls back to overs decimal (for NRR divisor). */
+        const ballsToOversDecimal = (totalBalls) => Math.floor(totalBalls / 6) + (totalBalls % 6) / 6;
+
 
         /** Generates round-robin fixtures (8 teams, home and away). 8 * 7 = 56 matches */
         const generateLeagueFixtures = () => {
@@ -434,7 +442,7 @@ Player Name Y (Batter)
             return fixtures;
         };
         
-        /** Initializes the league table. */
+        /** Initializes the league table, including NRR tracking fields. */
         const initializeLeagueTable = (teamKeys) => {
             return teamKeys.map(key => ({
                 teamKey: key,
@@ -444,6 +452,11 @@ Player Name Y (Batter)
                 L: 0, // Losses
                 T: 0, // Ties/Draws
                 Pts: 0, // Points
+                RunsFor: 0,
+                BallsFor: 0,
+                RunsAgainst: 0,
+                BallsAgainst: 0,
+                NRR: 0.000,
             })).sort((a, b) => a.name.localeCompare(b.name));
         };
         
@@ -491,12 +504,60 @@ Player Name Y (Batter)
                 const careerRecordsJson = localStorage.getItem(LOCAL_STORAGE_CAREER_RECORDS_KEY);
                 const leagueStateJson = localStorage.getItem(LOCAL_STORAGE_LEAGUE_STATE_KEY);
 
-                // 1. Load gameState
+                // 1. Initialize global state objects with defaults
+                gameState = getInitialGameState();
+                careerRecords = { matchHistory: [], playerStats: {}, bestBatting: null, bestBowling: null, currentSort: { column: 'R', direction: 'desc' } };
+                let initialLeagueState = getInitialLeagueState(); // Default inactive state
+
+
+                // 2. Load and merge League State first (CRITICAL FOR PERSISTENCE)
+                if (leagueStateJson) {
+                    try {
+                        const loadedLeagueState = JSON.parse(leagueStateJson);
+                        // Deep merge to ensure all properties from default are present, but loaded values override
+                        leagueState = { ...initialLeagueState, ...loadedLeagueState }; 
+                        
+                        // Critical validation for NRR field
+                        if (Array.isArray(leagueState.table)) {
+                            leagueState.table = leagueState.table.map(t => ({
+                                // Use the existing logic to ensure defaults are present if loaded data is old
+                                ...initialLeagueState.table.find(d => d.teamKey === t.teamKey) || t,
+                                ...t,
+                                NRR: typeof t.NRR === 'string' ? t.NRR : (t.NRR !== undefined ? parseFloat(t.NRR).toFixed(3) : 0.000) 
+                            }));
+                        } else {
+                            leagueState.table = initialLeagueState.table;
+                        }
+                    } catch (e) {
+                        console.error("Error parsing league state JSON:", e);
+                        leagueState = initialLeagueState; // Fallback
+                    }
+                } else {
+                    leagueState = initialLeagueState;
+                }
+                
+                // 3. Load Career Records
+                if (careerRecordsJson) {
+                    const loadedCareerRecords = JSON.parse(careerRecordsJson);
+                    careerRecords = { ...careerRecords, ...loadedCareerRecords };
+                    
+                    // Ensure all player stats objects have required NRR/Fifties/Hundreds fields for new features
+                    for (const key in careerRecords.playerStats) {
+                        const stats = careerRecords.playerStats[key];
+                        if (!stats.hasOwnProperty('totalBallsBowled')) stats.totalBallsBowled = 0;
+                        if (!stats.hasOwnProperty('topScore')) stats.topScore = 0;
+                        if (!stats.hasOwnProperty('bestBowlingFigure') || typeof stats.bestBowlingFigure.runs === 'undefined') {
+                            stats.bestBowlingFigure = { wickets: 0, runs: Infinity };
+                        }
+                        if (!stats.hasOwnProperty('fifties')) stats.fifties = 0;
+                        if (!stats.hasOwnProperty('hundreds')) stats.hundreds = 0;
+                    }
+                }
+
+                // 4. Load gameState
                 if (stateJson) {
                     const loadedState = JSON.parse(stateJson);
-                    gameState = getInitialGameState(); // Initialize with defaults first
-
-                    loadedState.isSimulating = false; // Force stop simulation on load
+                    loadedState.isSimulating = false; 
 
                     Object.keys(gameState).forEach(key => {
                         if (typeof gameState[key] === 'object' && gameState[key] !== null && !Array.isArray(gameState[key])) {
@@ -510,7 +571,7 @@ Player Name Y (Batter)
                         }
                     });
 
-                    // Special handling for players array within teams to ensure new player properties are initialized
+                    // Ensure player consistency on team A/B
                     ['A', 'B'].forEach(teamId => {
                         if (loadedState.teams?.[teamId]?.players && Array.isArray(loadedState.teams[teamId].players)) {
                             gameState.teams[teamId].players = loadedState.teams[teamId].players.map((loadedPlayer, idx) => {
@@ -518,12 +579,15 @@ Player Name Y (Batter)
                                 const playerRole = VALID_ROLES.includes(loadedPlayer.role) ? loadedPlayer.role : defaultRole;
                                 
                                 const defaultPlayer = getNewPlayerStats(loadedPlayer.name || DEFAULT_PLAYERS[idx], playerRole);
+                                
+                                // Reset volatile current innings stats upon load
+                                defaultPlayer.currentInningsR = 0; defaultPlayer.currentInningsB = 0; 
+                                defaultPlayer.currentInningsFours = 0; defaultPlayer.currentInningsSixes = 0;
+                                defaultPlayer.currentInningsSR = 0.0; defaultPlayer.currentInningsOut = false;
+
                                 return {
-                                    ...defaultPlayer, // Start with default structure to ensure all new properties exist
-                                    ...loadedPlayer, // Overlay loaded properties
-                                    // Ensure currentInnings specific stats are reset on load if resuming a match
-                                    currentInningsR: 0, currentInningsB: 0, currentInningsFours: 0,
-                                    currentInningsSixes: 0, currentInningsSR: 0.0, currentInningsOut: false
+                                    ...defaultPlayer, 
+                                    ...loadedPlayer, 
                                 };
                             }).slice(0, 11);
                         }
@@ -532,45 +596,18 @@ Player Name Y (Batter)
                         }
                     });
 
-                } else {
-                    gameState = getInitialGameState();
                 }
 
-                // 2. Load Career Records
-                if (careerRecordsJson) {
-                    careerRecords = JSON.parse(careerRecordsJson);
-                    // Ensure new properties for records are initialized
-                    if (!careerRecords.currentSort) {
-                        careerRecords.currentSort = { column: 'R', direction: 'desc' };
-                    }
-                    for (const key in careerRecords.playerStats) {
-                        const stats = careerRecords.playerStats[key];
-                        if (!stats.hasOwnProperty('totalBallsBowled')) stats.totalBallsBowled = 0;
-                        if (!stats.hasOwnProperty('topScore')) stats.topScore = 0;
-                        if (!stats.hasOwnProperty('bestBowlingFigure') || typeof stats.bestBowlingFigure.runs === 'undefined') {
-                            stats.bestBowlingFigure = { wickets: 0, runs: Infinity };
-                        }
-                        if (!stats.hasOwnProperty('fifties')) stats.fifties = 0;
-                        if (!stats.hasOwnProperty('hundreds')) stats.hundreds = 0;
-                    }
-                } else {
-                    careerRecords = { matchHistory: [], playerStats: {}, bestBatting: null, bestBowling: null, currentSort: { column: 'R', direction: 'desc' } };
-                }
-                
-                // 3. Load League State
-                if (leagueStateJson) {
-                    leagueState = JSON.parse(leagueStateJson);
-                    // Ensure records structure exists inside leagueState
-                    if (!leagueState.records) {
-                        leagueState.records = getInitialLeagueState().records;
-                    }
-                } else {
-                    leagueState = getInitialLeagueState();
+                // 5. CRITICAL FIX: If League is active, ensure the current mode is set to league.
+                // This ensures the navigation bar and home redirects work correctly.
+                if (leagueState.isActive) {
+                     gameState.currentMode = 'league';
                 }
 
             } catch (e) {
                 console.error("Error loading state from localStorage:", e);
-                gameState = getInitialGameState(); // Fallback to initial state
+                // Fallback to initial state if critical error during load
+                gameState = getInitialGameState(); 
                 careerRecords = { matchHistory: [], playerStats: {}, bestBatting: null, bestBowling: null, currentSort: { column: 'R', direction: 'desc' } };
                 leagueState = getInitialLeagueState();
             }
@@ -581,20 +618,28 @@ Player Name Y (Batter)
             try {
                 localStorage.setItem(LOCAL_STORAGE_STATE_KEY, JSON.stringify(gameState));
                 localStorage.setItem(LOCAL_STORAGE_CAREER_RECORDS_KEY, JSON.stringify(careerRecords));
+                
+                // CRITICAL: Only save league state if it is explicitly active, otherwise delete old data.
                 if (leagueState.isActive) {
-                    localStorage.setItem(LOCAL_STORAGE_LEAGUE_STATE_KEY, JSON.stringify(leagueState));
+                    // Create a mutable copy to ensure NRR is saved as a three decimal string format without polluting the live state if it's currently a number
+                    const leagueStateToSave = JSON.parse(JSON.stringify(leagueState)); 
+
+                    if (Array.isArray(leagueStateToSave.table)) {
+                        leagueStateToSave.table = leagueStateToSave.table.map(t => ({
+                             ...t,
+                             NRR: typeof t.NRR === 'string' ? t.NRR : (t.NRR || 0.000).toFixed(3)
+                        }));
+                    }
+                    localStorage.setItem(LOCAL_STORAGE_LEAGUE_STATE_KEY, JSON.stringify(leagueStateToSave));
                 } else {
-                    localStorage.removeItem(LOCAL_STORAGE_LEAGUE_STATE_KEY); // Remove if league is inactive
+                    localStorage.removeItem(LOCAL_STORAGE_LEAGUE_STATE_KEY);
                 }
             } catch (e) {
                 console.error("Error saving state to localStorage:", e);
             }
         };
 
-        /** Resets the match state only, keeping team names, player names/roles, and global records. 
-         *  If forceStartMenu is true, navigates back to the main menu, otherwise returns to league home if in league mode.
-         *  Note: This function is primarily used for quitting a match mid-game.
-         */
+        /** Resets the match state only, keeping team names, player names/roles, and global records. */
         const resetMatchState = (forceStartMenu = false) => {
             const teamA_name = gameState.teams['A'].name;
             const teamB_name = gameState.teams['B'].name;
@@ -609,6 +654,9 @@ Player Name Y (Batter)
             const playerA_details = gameState.teams['A'].players.map(p => ({ name: p.name, role: p.role }));
             const playerB_details = gameState.teams['B'].players.map(p => ({ name: p.name, role: p.role }));
 
+            // Store league active state before re-initializing
+            const leagueWasActive = leagueState.isActive; 
+            
             gameState = getInitialGameState(); // Re-initialize to clear all volatile match data
 
             // Restore persistent settings
@@ -633,21 +681,22 @@ Player Name Y (Batter)
             gameState.teams['B'].inningsScores = [];
             gameState.teams['A'].inningsScorecardHistory = [];
             gameState.teams['B'].inningsScorecardHistory = [];
-
-            gameState.score.bowling.currentBowlerIndex = 5;
-            gameState.score.bowling.lastBowlerIndex = -1;
+            
 
             saveState();
 
             if (forceStartMenu || gameState.currentMode === 'career') {
                 navigateTo('start');
-            } else if (gameState.currentMode === 'league') {
+            } else if (gameState.currentMode === 'league' && leagueWasActive) {
                 // If quitting mid-league match, reset the fixture status
                 const currentFixture = leagueState.fixtures.find(f => f.status === 'live');
                 if (currentFixture) {
                     currentFixture.status = 'upcoming'; // Revert to upcoming if quitting mid-match
                 }
+                saveState(); // Save the updated league fixture status
                 navigateTo('league_home');
+            } else {
+                 navigateTo('start'); // Fallback if league mode wasn't actually active
             }
         };
 
@@ -692,7 +741,7 @@ Player Name Y (Batter)
                     }
                 }
                 // If in league mode, show league buttons
-                else if (gameState.currentMode === 'league') {
+                else if (gameState.currentMode === 'league' && leagueState.isActive) {
                     if (gameState.currentScreen !== 'league_home') {
                         navButtonsHtml += `<button onclick="navigateTo('league_home')" class="nav-button">League Home</button>`;
                     }
@@ -737,6 +786,13 @@ Player Name Y (Batter)
             if (!appDiv) return; // Guard against appDiv not being ready
             appDiv.innerHTML = ''; // Clear previous content
 
+            // FIX: If a League is active, and the user somehow landed on the main career screen,
+            // push them back to the league hub if their intended mode is still 'league'.
+            if (leagueState.isActive && gameState.currentScreen === 'start' && gameState.currentMode === 'league') {
+                navigateTo('league_home');
+                return; // Stop current render to avoid double work
+            }
+            
             renderNavBar(); // Render navigation bar first
 
             switch (gameState.currentScreen) {
@@ -1131,23 +1187,27 @@ Player Name Y (Batter)
                     <td class="px-4 py-2 text-right">${player.currentInningsB}</td>
                     <td class="px-4 py-2 text-right">${player.currentInningsFours}</td>
                     <td class="px-4 py-2 text-right">${player.currentInningsSixes}</td>
-                    <td class="px-4 py-2 text-right">${player.currentInningsSR}</td>
+                    <td class="px-4 py-2 text-right">${player.currentInningsB > 0 ? ((player.currentInningsR / player.currentInningsB) * 100).toFixed(2) : '0.00'}</td>
                 </tr>
             `).join('');
 
             // Get bowling team's top bowler stats for the current match (accumulated)
             const bowlingTeamId = (gameState.currentBattingTeamId === gameState.userTeamId) ? gameState.compTeamId : gameState.userTeamId;
-            const bowlers = gameState.teams[bowlingTeamId].players.filter(p => p.W > 0 || p.Runs > 0 || p.Balls > 0);
+            const bowlers = gameState.teams[bowlingTeamId].players.filter(p => p.Balls > 0);
             const topBowlers = bowlers.sort((a, b) => b.W - a.W || a.Runs - b.Runs).slice(0, 3);
-            const bowlingRows = topBowlers.map(bowler => `
-                <tr class="bg-blue-50">
-                    <td class="px-4 py-2 font-medium">${bowler.name} <span class="text-xs text-gray-500">(${bowler.role})</span></td>
-                    <td class="px-4 py-2 text-right">${bowler.O}.${bowler.Balls % 6}</td>
-                    <td class="px-4 py-2 text-right">${bowler.Runs}</td>
-                    <td class="px-4 py-2 text-right">${bowler.W}</td>
-                    <td class="px-4 py-2 text-right">${(bowler.Balls > 0) ? (bowler.Runs / (bowler.Balls / 6)).toFixed(2) : 0.0}</td>
-                </tr>
-            `).join('');
+            const bowlingRows = topBowlers.map(bowler => {
+                const totalBowledOversDecimal = bowler.O + (bowler.Balls % 6) / 6;
+                const econ = (totalBowledOversDecimal > 0) ? (bowler.Runs / totalBowledOversDecimal).toFixed(2) : 0.0;
+                return `
+                    <tr class="bg-blue-50">
+                        <td class="px-4 py-2 font-medium">${bowler.name} <span class="text-xs text-gray-500">(${bowler.role})</span></td>
+                        <td class="px-4 py-2 text-right">${bowler.O}.${bowler.Balls % 6}</td>
+                        <td class="px-4 py-2 text-right">${bowler.Runs}</td>
+                        <td class="px-4 py-2 text-right">${bowler.W}</td>
+                        <td class="px-4 py-2 text-right">${econ}</td>
+                    </tr>
+                `;
+            }).join('');
 
 
             return `
@@ -1193,6 +1253,31 @@ Player Name Y (Batter)
         };
 
         // --- LEAGUE UI RENDERING ---
+        
+        /** Moves league to finished state. */
+        const finishLeague = () => {
+            // Ensure table is sorted before declaring winner (NRR is the tiebreaker)
+            leagueState.table.sort((a, b) => 
+                b.Pts - a.Pts || 
+                b.W - a.W || 
+                parseFloat(b.NRR) - parseFloat(a.NRR) || 
+                a.name.localeCompare(b.name)
+            );
+            const winnerName = leagueState.table[0].name;
+            if(confirm(`The World Super League is complete! ${winnerName} is the champion. Reset the league for a new season?`)) {
+                leagueState.isActive = false;
+                gameState.currentMode = 'career';
+                saveState();
+                navigateTo('start');
+            }
+        }
+        
+        /** Allows user to temporarily switch to Career Mode (Exhibition) while keeping League active. */
+        const pauseLeagueAndGoHome = () => {
+            gameState.currentMode = 'career'; // Switch context
+            saveState();
+            navigateTo('start');
+        };
 
         const renderLeagueHome = () => {
             if (!leagueState.isActive) {
@@ -1217,8 +1302,17 @@ Player Name Y (Batter)
             const leagueFormatDisplay = leagueState.leagueFormat === 'test_match' ? 'Test Match' : `${leagueState.oversPerMatch} Overs`;
 
             const renderTable = () => {
-                const teamKeys = Object.keys(PRESET_TEAMS_DATA);
-                const userTeamKey = teamKeys.find(key => PRESET_TEAMS_DATA[key].name === gameState.teams[gameState.userTeamId].name);
+                const userTeamName = gameState.teams[gameState.userTeamId].name;
+                const userTeamKey = Object.keys(PRESET_TEAMS_DATA).find(key => PRESET_TEAMS_DATA[key].name === userTeamName);
+
+
+                // Ensure the table is sorted correctly before rendering
+                leagueState.table.sort((a, b) => 
+                    b.Pts - a.Pts || 
+                    b.W - a.W || 
+                    parseFloat(b.NRR) - parseFloat(a.NRR) || 
+                    a.name.localeCompare(b.name)
+                );
 
                 const tableRows = leagueState.table.map(t => `
                     <tr class="${t.teamKey === userTeamKey ? 'bg-yellow-100 font-bold' : 'bg-white'} border-b">
@@ -1227,6 +1321,7 @@ Player Name Y (Batter)
                         <td class="px-4 py-2 text-center text-green-600">${t.W}</td>
                         <td class="px-4 py-2 text-center text-red-600">${t.L}</td>
                         <td class="px-4 py-2 text-center">${t.T}</td>
+                        <td class="px-4 py-2 text-right">${t.NRR}</td>
                         <td class="px-4 py-2 text-right font-extrabold">${t.Pts}</td>
                     </tr>
                 `).join('');
@@ -1242,6 +1337,7 @@ Player Name Y (Batter)
                                     <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">W</th>
                                     <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">L</th>
                                     <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">T/D</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">NRR</th>
                                     <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Pts</th>
                                 </tr>
                             </thead>
@@ -1253,25 +1349,13 @@ Player Name Y (Batter)
                 `;
             };
 
-            const finishLeague = () => {
-                // Ensure table is sorted before declaring winner
-                leagueState.table.sort((a, b) => b.Pts - a.Pts || b.W - a.W || a.name.localeCompare(b.name));
-                const winnerName = leagueState.table[0].name;
-                if(confirm(`The World Super League is complete! ${winnerName} is the champion. Reset the league for a new season?`)) {
-                    leagueState.isActive = false;
-                    gameState.currentMode = 'career';
-                    saveState();
-                    navigateTo('start');
-                }
-            }
-
             const renderFixtures = () => {
                  // Show the next 5 upcoming matches
                 const upcomingFixtures = leagueState.fixtures.filter(f => f.status === 'upcoming').slice(0, 5);
                 const completedFixtures = leagueState.fixtures.filter(f => f.status === 'completed').slice(-5).reverse(); // Show last 5 completed
 
                 const renderFixtureRow = (f, isCompleted) => `
-                    <tr class="${isCompleted ? 'bg-gray-50 text-gray-600' : 'bg-white font-semibold'} border-b">
+                    <tr class="${isCompleted ? 'bg-gray-50 text-gray-600' : (f.status === 'live' ? 'bg-red-200 font-semibold' : 'bg-white font-semibold')} border-b">
                         <td class="px-4 py-2">${PRESET_TEAMS_DATA[f.home].name}</td>
                         <td class="px-4 py-2 text-center">vs</td>
                         <td class="px-4 py-2">${PRESET_TEAMS_DATA[f.away].name}</td>
@@ -1332,7 +1416,8 @@ Player Name Y (Batter)
                     
                     <div class="mt-8 text-center space-x-4">
                         <button onclick="navigateTo('league_records')" class="btn-primary bg-blue-600 hover:bg-blue-700">View League Stats</button>
-                        <button onclick="if(confirm('Are you sure you want to quit the current league season? All league progress will be lost.')) { leagueState.isActive = false; gameState.currentMode = 'career'; saveState(); navigateTo('start'); }" class="btn-primary bg-cricket-red hover:bg-red-700">Quit League and Go to Home</button>
+                        <button onclick="pauseLeagueAndGoHome()" class="btn-primary bg-gray-600 hover:bg-gray-700">Go to Home (Exhibition Match)</button>
+                        <button onclick="if(confirm('Are you sure you want to quit the current league season? All league progress will be lost.')) { leagueState.isActive = false; gameState.currentMode = 'career'; saveState(); navigateTo('start'); }" class="btn-primary bg-cricket-red hover:bg-red-700">Quit League and Reset</button>
                     </div>
                 </div>
             `;
@@ -1399,10 +1484,37 @@ Player Name Y (Batter)
             
             // 3. Set Team A/B rosters and names based on fixture
             gameState.teams['A'].name = teamAData.name;
-            gameState.teams['A'].players = teamAData.players.map(p => getNewPlayerStats(p.name, p.role));
+            // When setting players for a league match, load the preset roster but preserve match stats if resuming a match
+            gameState.teams['A'].players = teamAData.players.map(p => {
+                // Find existing player match totals if resuming, otherwise start fresh
+                const existingPlayer = gameState.teams['A'].players.find(existing => existing.name === p.name);
+                const newPlayer = getNewPlayerStats(p.name, p.role);
+                // If resuming a live match, preserve match totals (R, B, W, etc.) but reset current innings
+                if (fixture.status === 'live' && existingPlayer) {
+                    newPlayer.R = existingPlayer.R;
+                    newPlayer.B = existingPlayer.B;
+                    newPlayer.W = existingPlayer.W;
+                    newPlayer.Runs = existingPlayer.Runs;
+                    newPlayer.O = existingPlayer.O;
+                    newPlayer.Balls = existingPlayer.Balls;
+                }
+                return newPlayer;
+            });
             
             gameState.teams['B'].name = teamBData.name;
-            gameState.teams['B'].players = teamBData.players.map(p => getNewPlayerStats(p.name, p.role));
+            gameState.teams['B'].players = teamBData.players.map(p => {
+                 const existingPlayer = gameState.teams['B'].players.find(existing => existing.name === p.name);
+                 const newPlayer = getNewPlayerStats(p.name, p.role);
+                 if (fixture.status === 'live' && existingPlayer) {
+                    newPlayer.R = existingPlayer.R;
+                    newPlayer.B = existingPlayer.B;
+                    newPlayer.W = existingPlayer.W;
+                    newPlayer.Runs = existingPlayer.Runs;
+                    newPlayer.O = existingPlayer.O;
+                    newPlayer.Balls = existingPlayer.Balls;
+                 }
+                 return newPlayer;
+            });
             
             // 4. Assign user team based on preset preference (if user team is in fixture)
             const userLeagueTeamName = gameState.teams[gameState.userTeamId].name;
@@ -1427,12 +1539,6 @@ Player Name Y (Batter)
                 leagueState.fixtures[indexToUpdate].status = 'live';
             } 
             
-            // If resuming, need to load the saved innings state if it exists
-            
-            // In League Mode, loading the players here resets their match stats (R, W, O, etc. that accumulate during match).
-            // This is desired behavior for starting a NEW match. 
-            // If the user resumes a live match, the main `loadState` function must have loaded the score. 
-            
             saveState();
             navigateTo('toss');
         };
@@ -1453,6 +1559,26 @@ Player Name Y (Batter)
             renderScreen(); // Re-render to show/hide overs selection
         };
 
+        // NEW: Helper function to setup bowling indices for a new innings
+        const setupNewInningsBowling = () => {
+            const bowlingTeamId = (gameState.currentBattingTeamId === gameState.userTeamId) ? gameState.compTeamId : gameState.userTeamId;
+            const bowlingTeam = gameState.teams[bowlingTeamId];
+
+            // Find the lowest index player who is an eligible bowler
+            let initialBowlerIndex = bowlingTeam.players.findIndex(p => ELIGIBLE_BOWLERS.includes(p.role));
+            
+            if (initialBowlerIndex === -1) {
+                // Fallback to index 5 if no specialized bowler exists, but this means batters/keepers will be bowling.
+                initialBowlerIndex = 5; 
+                console.warn(`No dedicated bowler/all-rounder found for ${bowlingTeam.name}. Falling back to default index.`);
+            }
+
+            // Apply the selection
+            gameState.score.bowling.currentBowlerIndex = initialBowlerIndex;
+            gameState.score.bowling.lastBowlerIndex = -1;
+        };
+
+
         /** Performs the initial toss and sets up the first innings. */
         const performToss = () => {
             const winner = Math.random() < 0.5 ? 'user' : 'comp';
@@ -1466,7 +1592,7 @@ Player Name Y (Batter)
             // If user wins, decision is deferred until userChooseBat/Bowl
 
             if (gameState.tossDecision) { // If a decision has been made
-                // For Test Match, determine team1Id and team2Id
+                // Setup team assignments for Test Match
                 if (gameState.gameMode === 'test_match') {
                     if (gameState.isUserBatting) {
                         gameState.testMatchState.team1Id = gameState.userTeamId;
@@ -1476,10 +1602,11 @@ Player Name Y (Batter)
                         gameState.testMatchState.team2Id = gameState.userTeamId;
                     }
                 }
+                // Setup the initial bowler dynamically
+                setupNewInningsBowling();
             }
-            gameState.isMatchActive = true; // Ensure this is true after toss
-            gameState.score.bowling.currentBowlerIndex = 5;
-            gameState.score.bowling.lastBowlerIndex = -1;
+            
+            gameState.isMatchActive = true; 
             saveState();
             renderScreen();
         };
@@ -1493,9 +1620,8 @@ Player Name Y (Batter)
                 gameState.testMatchState.team1Id = gameState.userTeamId;
                 gameState.testMatchState.team2Id = gameState.compTeamId;
             }
-            gameState.isMatchActive = true; // Ensure this is true after toss
-            gameState.score.bowling.currentBowlerIndex = 5;
-            gameState.score.bowling.lastBowlerIndex = -1;
+            gameState.isMatchActive = true; 
+            setupNewInningsBowling(); // Set initial bowler
             saveState();
             renderScreen();
         };
@@ -1509,9 +1635,8 @@ Player Name Y (Batter)
                 gameState.testMatchState.team1Id = gameState.compTeamId;
                 gameState.testMatchState.team2Id = gameState.userTeamId;
             }
-            gameState.isMatchActive = true; // Ensure this is true after toss
-            gameState.score.bowling.currentBowlerIndex = 5;
-            gameState.score.bowling.lastBowlerIndex = -1;
+            gameState.isMatchActive = true; 
+            setupNewInningsBowling(); // Set initial bowler
             saveState();
             renderScreen();
         };
@@ -1524,21 +1649,24 @@ Player Name Y (Batter)
 
             const eligibleBowlersInfo = [];
             bowlingTeam.players.forEach((player, index) => {
-                if (player.role === 'Bowler' || player.role === 'All Rounder') {
-                    eligibleBowlersInfo.push({ index: index, player: player });
+                // STRICTLY: Only allow Bowler and All Rounder roles to bowl
+                if (ELIGIBLE_BOWLERS.includes(player.role)) {
+                    eligibleBowlersInfo.push({ index: index, player: player, overs: player.O });
                 }
             });
 
             if (eligibleBowlersInfo.length === 0) {
-                console.warn("No eligible bowlers (Bowler or All Rounder) found in the team. Assigning first player as bowler as fallback.");
-                gameState.score.bowling.currentBowlerIndex = 0;
-                gameState.score.bowling.lastBowlerIndex = lastBowlerIndexForRotation;
+                // If no eligible bowlers, the previous bowler must continue (even if they are a Batter/WK by mistake)
+                console.warn("No eligible Bowler/All Rounder found. Previous bowler continuing.");
                 return;
             }
 
-            eligibleBowlersInfo.sort((a, b) => a.player.O - b.player.O); // Sort by total match overs bowled
+            // Sort eligible bowlers: 1. By least overs bowled, 2. By index (to ensure fair rotation if overs are tied)
+            eligibleBowlersInfo.sort((a, b) => a.overs - b.overs || a.index - b.index);
 
             let nextBowlerIndex = -1;
+            
+            // 1. Find the best available bowler who DIDN'T bowl the last over.
             for (const bowlerInfo of eligibleBowlersInfo) {
                 if (bowlerInfo.index !== lastBowlerIndexForRotation) {
                     nextBowlerIndex = bowlerInfo.index;
@@ -1546,19 +1674,25 @@ Player Name Y (Batter)
                 }
             }
 
+            // 2. If no available bowler is found (e.g., only one bowler, or all others have bowled the same number as the last one),
+            // or if the loop finished without finding an alternative, just pick the top available bowler (lowest overs/index).
             if (nextBowlerIndex === -1 && eligibleBowlersInfo.length > 0) {
-                nextBowlerIndex = eligibleBowlersInfo[0].index;
-            } else if (nextBowlerIndex === -1) {
-                 nextBowlerIndex = 0;
-            }
+                 // Re-select the top bowler (could be the previous bowler if no one else is viable, e.g., one bowler team)
+                nextBowlerIndex = eligibleBowlersInfo[0].index; 
+            } 
 
-            gameState.score.bowling.lastBowlerIndex = lastBowlerIndexForRotation;
-            gameState.score.bowling.currentBowlerIndex = nextBowlerIndex;
+            // Apply the selected bowler index
+            if (nextBowlerIndex !== -1) {
+                gameState.score.bowling.lastBowlerIndex = lastBowlerIndexForRotation;
+                gameState.score.bowling.currentBowlerIndex = nextBowlerIndex;
+            }
         };
 
 
         /** Handles the logic for a single ball (dice roll). Returns true if innings ended, false otherwise. */
         const handleRoll = async (manualBatRoll = null) => {
+            if (gameState.score.wickets === 10) return checkInningsEnd(); // Already all out
+            
             const isUserBatting = gameState.currentBattingTeamId === gameState.userTeamId;
             let batRoll;
 
@@ -1685,7 +1819,7 @@ Player Name Y (Batter)
                 bowler.W += 1;
 
                 // Bring in next player if available
-                if (score.nextPlayerIndex < 11) {
+                if (score.wickets < 10) {
                     score.onStrikePlayerIndex = score.nextPlayerIndex; // New batsman takes strike
                     score.nextPlayerIndex++;
                 }
@@ -1773,7 +1907,12 @@ Player Name Y (Batter)
             gameState.currentBattingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
 
             resetCurrentInningsScoreState();
-            showInningsBreakMessage();
+            setupNewInningsBowling(); // Initialize bowler for new innings
+            
+            // Only show break message if not simulating fully
+            if (!gameState.isSimulating) {
+                showInningsBreakMessage();
+            }
         };
 
         const handleTestMatchInningsEnd = () => {
@@ -1786,10 +1925,13 @@ Player Name Y (Batter)
                 const team2Innings1Score = gameState.teams[team2Id].inningsScores[0]?.runs || 0; 
 
                 if (team2Innings1Score < team1Innings1Score) {
-                    gameState.testMatchState.matchFinishedByInningsWin = true;
-                    gameState.matchResult = `${gameState.teams[team1Id].name} won by an innings and ${team1Innings1Score - team2Innings1Score} runs!`;
-                    endMatch();
-                    return;
+                    // Check for follow-on possibility (usually 200 runs lead in 5-day tests, but here we just check if Team 2 trailed)
+                    if ((team1Innings1Score - team2Innings1Score) > 0) {
+                        gameState.testMatchState.matchFinishedByInningsWin = true;
+                        gameState.matchResult = `${gameState.teams[team1Id].name} won by an innings and ${team1Innings1Score - team2Innings1Score} runs!`;
+                        endMatch();
+                        return;
+                    }
                 }
             }
 
@@ -1822,6 +1964,8 @@ Player Name Y (Batter)
             const battingOrder = [team1Id, team2Id, team1Id, team2Id]; // Maps overall innings (1-indexed) to team IDs
             gameState.currentBattingTeamId = battingOrder[gameState.innings - 1]; // Use 0-indexed array
             gameState.isUserBatting = (gameState.currentBattingTeamId === gameState.userTeamId);
+            
+            setupNewInningsBowling(); // Initialize bowler for new innings
 
             // Calculate target for Innings 4 if we are moving to it
             if (gameState.innings === 4) {
@@ -1835,7 +1979,10 @@ Player Name Y (Batter)
 
             // Update lead/trail message
             gameState.testMatchState.currentLeadTrailMessage = calculateTestLeadTrailMessage();
-            showInningsBreakMessage();
+            // Only show break message if not simulating fully
+            if (!gameState.isSimulating) {
+                showInningsBreakMessage();
+            }
         };
 
         /** Resets the current innings' score trackers and batsman's current innings stats. */
@@ -1844,9 +1991,10 @@ Player Name Y (Batter)
                 runs: 0, wickets: 0, overs: 0, balls: 0,
                 onStrikePlayerIndex: 0, offStrikePlayerIndex: 1, nextPlayerIndex: 2
             };
+            // Note: Bowling state will be reset and setup by setupNewInningsBowling after this is called.
             gameState.score.bowling = {
                 overs: 0, balls: 0, wickets: 0, runsConceded: 0,
-                currentBowlerIndex: 5,
+                currentBowlerIndex: 5, // Placeholder
                 lastBowlerIndex: -1
             };
 
@@ -1930,13 +2078,15 @@ Player Name Y (Batter)
             }
 
             if (gameState.gameMode === 'limited_overs') {
-                const innings1BattingTeamId = gameState.innings === 2 ? (gameState.isUserBatting ? gameState.compTeamId : gameState.userTeamId) : gameState.currentBattingTeamId; // Team that just batted
-                const innings2BattingTeamId = gameState.currentBattingTeamId; // Team about to bat
-                const innings1TeamName = gameState.teams[innings1BattingTeamId].name;
-                const innings2TeamName = gameState.teams[innings2BattingTeamId].name;
+                const innings1Score = gameState.teams[gameState.currentBattingTeamId === 'A' ? 'B' : 'A'].inningsScores[0];
+                const innings1TeamName = gameState.teams[gameState.currentBattingTeamId === 'A' ? 'B' : 'A'].name;
+                const innings2TeamName = gameState.teams[gameState.currentBattingTeamId].name;
+                
+                // Re-calculate target based on actual runs scored in Innings 1
+                const target = (innings1Score?.runs || 0) + 1; 
 
-                mainMessage = `End of Innings 1. Target set! ${innings1TeamName} scored ${gameState.target - 1} runs.
-                                <br><strong class="text-cricket-green">${innings2TeamName} will now bat in Innings 2. They need ${gameState.target} runs to win from ${gameState.oversPerInnings} overs.</strong>`;
+                mainMessage = `End of Innings 1. Target set! ${innings1TeamName} scored ${target - 1} runs.
+                                <br><strong class="text-cricket-green">${innings2TeamName} will now bat in Innings 2. They need ${target} runs to win from ${gameState.oversPerInnings} overs.</strong>`;
                 continueButtonText = "Continue to Innings 2";
             } else { // Test Match
                 const team1Id = gameState.testMatchState.team1Id;
@@ -2077,7 +2227,15 @@ Player Name Y (Batter)
                     const teamAKey = leagueState.teams.find(key => PRESET_TEAMS_DATA[key].name === gameState.teams['A'].name);
                     const teamBKey = leagueState.teams.find(key => PRESET_TEAMS_DATA[key].name === gameState.teams['B'].name);
 
-                    updateLeagueTable(winnerTeamId, resultLine, teamAKey, teamBKey, gameState.gameMode);
+                    // Pass the full match data needed for NRR calculation
+                    const matchDataForNRR = { 
+                        teams: JSON.parse(JSON.stringify(gameState.teams)),
+                        gameMode: gameState.gameMode,
+                        oversPerInnings: gameState.oversPerInnings,
+                        target: gameState.target,
+                        summary: gameState.summary
+                    };
+                    updateLeagueTable(winnerTeamId, resultLine, teamAKey, teamBKey, matchDataForNRR);
                 }
             }
 
@@ -2103,40 +2261,152 @@ Player Name Y (Batter)
             navigateTo('league_home');
         };
 
-        /** Updates the league table based on a completed match result. */
-        const updateLeagueTable = (winnerTeamId, result, teamAKey, teamBKey, matchFormat) => {
-            const teamA = leagueState.table.find(t => t.teamKey === teamAKey);
-            const teamB = leagueState.table.find(t => t.teamKey === teamBKey);
+        /** Calculates match run/ball data for NRR update. */
+        const calculateMatchNRRData = (matchData, teamId) => {
+            let runsF = 0;
+            let ballsF = 0;
+            let runsA = 0;
+            let ballsA = 0;
+
+            if (matchData.gameMode === 'test_match') {
+                // NRR is typically zero in Test Matches (unless determined by rules we aren't implementing)
+                return { RunsFor: 0, BallsFor: 0, RunsAgainst: 0, BallsAgainst: 0, isTest: true };
+            }
+
+            // Limited Overs NRR Logic
+            const totalMaxBalls = matchData.oversPerInnings * 6;
             
-            if (!teamA || !teamB) {
+            // Determine who batted first (Team A and B assignments are arbitrary but stable within the match)
+            // Use InningsNum property to reliably determine 1st/2nd batting team regardless of A/B assignment
+            const teamAInnings1Score = matchData.teams['A'].inningsScores.find(s => s.inningsNum === 1);
+            const teamBInnings1Score = matchData.teams['B'].inningsScores.find(s => s.inningsNum === 1);
+            
+            let firstBattingTeamId, secondBattingTeamId;
+            if (teamAInnings1Score) {
+                firstBattingTeamId = 'A';
+                secondBattingTeamId = 'B';
+            } else { // Must be team B
+                firstBattingTeamId = 'B';
+                secondBattingTeamId = 'A';
+            }
+            
+            const team1Score = matchData.teams[firstBattingTeamId].inningsScores.find(s => s.inningsNum === 1);
+            const team2Score = matchData.teams[secondBattingTeamId].inningsScores.find(s => s.inningsNum === 2);
+            
+            if (!team1Score || !team2Score) {
+                console.error("Incomplete scores for NRR calculation.");
+                return { RunsFor: 0, BallsFor: 0, RunsAgainst: 0, BallsAgainst: 0, isTest: false };
+            }
+
+            const isCurrentTeamFirstBatting = teamId === firstBattingTeamId;
+            const currentScore = isCurrentTeamFirstBatting ? team1Score : team2Score;
+            const opponentScore = isCurrentTeamFirstBatting ? team2Score : team1Score;
+
+            runsF = currentScore.runs;
+            ballsF = oversToBalls(currentScore.overs, currentScore.balls);
+            runsA = opponentScore.runs;
+            ballsA = oversToBalls(opponentScore.overs, opponentScore.balls);
+
+            // NRR Rule 1: If the chasing team wins, runs scored in the chase are only counted up to (Target - 1).
+            if (!isCurrentTeamFirstBatting && currentScore.runs >= matchData.target) {
+                runsF = matchData.target - 1; 
+                // Balls faced remains actual balls faced.
+            }
+            
+            // NRR Rule 2: If a team is All Out (wickets = 10), they are considered to have faced the full quota of overs, 
+            // UNLESS the innings finished early due to target being reached.
+            
+            // Current Team (Runs For calculation)
+            if (currentScore.wickets === 10 && currentScore.runs < matchData.target) {
+                ballsF = totalMaxBalls;
+            }
+            
+            // Opponent Team (Runs Against calculation)
+            if (opponentScore.wickets === 10 && opponentScore.runs < (isCurrentTeamFirstBatting ? matchData.target : (runsF + 1))) {
+                ballsA = totalMaxBalls;
+            }
+
+            return { RunsFor: runsF, BallsFor: ballsF, RunsAgainst: runsA, BallsAgainst: ballsA, isTest: false };
+        };
+
+
+        /** Updates the league table based on a completed match result, including NRR. */
+        const updateLeagueTable = (winnerTeamId, result, teamAKey, teamBKey, matchDataForNRR) => {
+            
+            // Team A and Team B in fixture context (using keys like 'India', 'Australia')
+            const teamAFixture = leagueState.table.find(t => t.teamKey === teamAKey);
+            const teamBFixture = leagueState.table.find(t => t.teamKey === teamBKey);
+            
+            if (!teamAFixture || !teamBFixture) {
                  console.error("League team keys not found for table update.");
                  return;
             }
-
-            // Determine if winner was team A or B (based on names, not team IDs)
-            const winnerName = winnerTeamId ? gameState.teams[winnerTeamId].name : null;
             
-            // Mark as Played
-            teamA.P += 1;
-            teamB.P += 1;
+            // Calculate NRR components based on the match data in gameState
+            const teamANRRData = calculateMatchNRRData(matchDataForNRR, 'A');
+            const teamBNRRData = calculateMatchNRRData(matchDataForNRR, 'B');
+
+            // Update stats for Team A (Fixture)
+            teamAFixture.P += 1;
+            teamAFixture.RunsFor += teamANRRData.RunsFor;
+            teamAFixture.BallsFor += teamANRRData.BallsFor;
+            teamAFixture.RunsAgainst += teamANRRData.RunsAgainst;
+            teamAFixture.BallsAgainst += teamANRRData.BallsAgainst;
+
+            // Update stats for Team B (Fixture)
+            teamBFixture.P += 1;
+            teamBFixture.RunsFor += teamBNRRData.RunsFor;
+            teamBFixture.BallsFor += teamBNRRData.BallsFor;
+            teamBFixture.RunsAgainst += teamBNRRData.RunsAgainst;
+            teamBFixture.BallsAgainst += teamBNRRData.BallsAgainst;
+
+            // Apply points and win/loss records
+            const winnerName = winnerTeamId ? matchDataForNRR.teams[winnerTeamId].name : null;
+            const matchFormat = matchDataForNRR.gameMode;
 
             if (result.includes("The match was tied") || (matchFormat === 'test_match' && result.includes("The match was drawn"))) {
-                teamA.T += 1;
-                teamB.T += 1;
-                teamA.Pts += 1; // 1 point for T/D
-                teamB.Pts += 1;
-            } else if (winnerName === teamA.name) {
-                teamA.W += 1;
-                teamB.L += 1;
-                teamA.Pts += 2; // 2 points for Win
-            } else if (winnerName === teamB.name) {
-                teamB.W += 1;
-                teamA.L += 1;
-                teamB.Pts += 2;
+                teamAFixture.T += 1;
+                teamBFixture.T += 1;
+                teamAFixture.Pts += (matchFormat === 'test_match' ? 1 : 1); // 1 point for T/D
+                teamBFixture.Pts += (matchFormat === 'test_match' ? 1 : 1);
+            } else if (winnerName === teamAFixture.name) {
+                teamAFixture.W += 1;
+                teamBFixture.L += 1;
+                teamAFixture.Pts += (matchFormat === 'test_match' ? 4 : 2); // Test match wins get more points (4 standard)
+            } else if (winnerName === teamBFixture.name) {
+                teamBFixture.W += 1;
+                teamAFixture.L += 1;
+                teamBFixture.Pts += (matchFormat === 'test_match' ? 4 : 2);
             }
 
-            // Sort table: Pts desc, then Wins desc, then Name asc
-            leagueState.table.sort((a, b) => b.Pts - a.Pts || b.W - a.W || a.name.localeCompare(b.name));
+            // Calculate NRR for all teams in the table
+            leagueState.table.forEach(t => {
+                if (t.BallsFor > 0 && t.BallsAgainst > 0 && matchFormat !== 'test_match') {
+                    const oversFor = ballsToOversDecimal(t.BallsFor);
+                    const oversAgainst = ballsToOversDecimal(t.BallsAgainst);
+                    
+                    // Prevent division by zero
+                    if (oversFor > 0 && oversAgainst > 0) {
+                        const runRateFor = t.RunsFor / oversFor;
+                        const runRateAgainst = t.RunsAgainst / oversAgainst;
+                        t.NRR = (runRateFor - runRateAgainst).toFixed(3);
+                    } else {
+                        t.NRR = 0.000;
+                    }
+                } else {
+                    t.NRR = 0.000; // Test matches and teams with no matches played
+                }
+            });
+
+            // Sort table: Pts desc, then Wins desc, then NRR desc, then Name asc (Tiebreaker applied)
+            leagueState.table.sort((a, b) => 
+                b.Pts - a.Pts || 
+                b.W - a.W || 
+                parseFloat(b.NRR) - parseFloat(a.NRR) || 
+                a.name.localeCompare(b.name)
+            );
+            
+            saveState(); // Save league state immediately after updating table
         };
         
         /** Advances to the next match in the league after a match is completed. */
@@ -2189,6 +2459,7 @@ Player Name Y (Batter)
                 
                 if (gameState.matchResult) {
                     stopSimulation();
+                    navigateTo('summary'); // Go straight to summary if match finished during simulation
                     return;
                 }
                 
@@ -2217,6 +2488,65 @@ Player Name Y (Batter)
 
 
         // --- SUMMARY & RECORDS LOGIC ---
+
+        /** Calculates Man of the Tournament, Orange Cap, and Purple Cap winners. */
+        const calculateCumulativeAwards = (records) => {
+            const playerStatsArray = Object.values(records.playerStats);
+
+            let orangeCap = { name: 'N/A', runs: 0, teamName: '' };
+            let purpleCap = { name: 'N/A', wickets: 0, runs: Infinity, teamName: '' };
+            let manOfTheTournament = { name: 'N/A', score: -Infinity, reason: 'N/A', teamName: '' };
+            let foundPlayer = false;
+
+            playerStatsArray.forEach(p => {
+                foundPlayer = true;
+                // Orange Cap (Highest Runs)
+                if (p.R > orangeCap.runs) {
+                    orangeCap = { name: p.name, runs: p.R, teamName: p.teamName };
+                }
+                
+                // Purple Cap (Highest Wickets, then lowest Runs conceded)
+                // Need to calculate career Balls Bowled for proper Econ/rate comparison
+                const totalOversDecimal = p.totalBallsBowled > 0 ? (Math.floor(p.totalBallsBowled / 6) + (p.totalBallsBowled % 6) / 6) : 0;
+                const econ = totalOversDecimal > 0 ? p.Runs / totalOversDecimal : Infinity;
+
+                if (p.W > purpleCap.wickets || (p.W === purpleCap.wickets && econ < purpleCap.runs)) {
+                    purpleCap = { name: p.name, wickets: p.W, runs: p.Runs, teamName: p.teamName };
+                }
+                
+                // Man of the Tournament (Impact Score: R * 0.7 + W * 10 - Runs Conceded * 0.3 + 100s * 50 + 50s * 20)
+                const impact = (p.R * 0.7) + (p.W * 10) - (p.Runs * 0.3) + (p.hundreds * 50) + (p.fifties * 20);
+
+                if (impact > manOfTheTournament.score) {
+                    let reason = `Exceptional cumulative performance across the league, contributing significantly with both bat and ball.`;
+                    
+                    if (p.hundreds > 0 && p.W > 0) {
+                         reason = `For a spectacular all-round performance, scoring ${p.R} runs (including ${p.hundreds} century(ies)) and taking ${p.W} wickets.`;
+                    } else if (p.R > orangeCap.runs * 0.9 && p.R > 200) { // If near top scorer and played well
+                         reason = `A dominating batting display throughout the league, finishing with ${p.R} runs.`;
+                    } else if (p.W > purpleCap.wickets * 0.9 && p.W > 10) { // If near top wicket taker and bowled well
+                         reason = `A consistent threat with the ball, finishing with ${p.W} wickets and a great economy rate.`;
+                    } else if (p.R >= 150 || p.W >= 8) {
+                        reason = `A monster tournament performance that dominated the headlines.`;
+                    }
+
+                    manOfTheTournament = {
+                        name: p.name,
+                        score: impact,
+                        reason: reason,
+                        teamName: p.teamName
+                    };
+                }
+            });
+            
+            // Fallback for MOT if no stats accumulated
+            if (!foundPlayer) {
+                 manOfTheTournament = { name: 'N/A', score: 0, reason: 'No player data accumulated yet.', teamName: 'N/A' };
+            }
+
+            return { orangeCap, purpleCap, manOfTheTournament };
+        };
+
 
         /** Generates the match summary data structure. */
         const generateMatchSummary = (winnerName, resultLine, firstBattingOverallTeamId, secondBattingOverallTeamId) => {
@@ -2260,6 +2590,7 @@ Player Name Y (Batter)
 
             allPlayers.forEach(p => {
                 if (p.B > 0 || p.Balls > 0) {
+                    // Impact calculation: (Runs * 1.5) + (Wickets * 15) - (Runs Conceded * 0.5)
                     const impact = (p.R * 1.5) + (p.W * 15) - (p.Runs * 0.5);
                     const team = teamA.players.includes(p) ? teamA : teamB;
 
@@ -2359,10 +2690,15 @@ Player Name Y (Batter)
                 team.inningsScorecardHistory.forEach(inningsSnapshot => {
                     inningsSnapshot.forEach(playerInInnings => {
                         const playerKey = `${playerInInnings.name}_${team.name}`;
-                        if (playerInInnings.R >= 100) {
-                            matchHundreds.set(playerKey, (matchHundreds.get(playerKey) || 0) + 1);
-                        } else if (playerInInnings.R >= 50 && playerInInnings.R < 100) {
-                            matchFifties.set(playerKey, (matchFifties.get(playerKey) || 0) + 1);
+                        
+                        // Check if player has accumulated stats in career/league records
+                        if (records.playerStats[playerKey]) {
+                            // Only count fifties/hundreds if they occurred in the specific match innings (R >= 50 or R >= 100)
+                            if (playerInInnings.R >= 100 && playerInInnings.R < 200) { // Assume highest score is max 6*360 balls
+                                matchHundreds.set(playerKey, (matchHundreds.get(playerKey) || 0) + 1); 
+                            } else if (playerInInnings.R >= 50 && playerInInnings.R < 100) {
+                                matchFifties.set(playerKey, (matchFifties.get(playerKey) || 0) + 1);
+                            }
                         }
                     });
                 });
@@ -2388,10 +2724,15 @@ Player Name Y (Batter)
                     stats.W += p.W;
                     stats.Runs += p.Runs;
                     stats.Matches += 1;
-                    stats.totalBallsBowled += p.Balls;
+                    stats.totalBallsBowled += p.Balls; // Accumulate total balls bowled
 
-                    if (p.R > stats.topScore) {
-                        stats.topScore = p.R;
+                    // Find the highest score across all innings played in this match for this player
+                    const highestInningsScore = team.inningsScorecardHistory
+                                                .flatMap(snapshot => snapshot.filter(sp => sp.name === p.name))
+                                                .reduce((max, sp) => Math.max(max, sp.R), 0);
+                    
+                    if (highestInningsScore > stats.topScore) {
+                         stats.topScore = highestInningsScore;
                     }
 
                     if (p.W > stats.bestBowlingFigure.wickets ||
@@ -2399,23 +2740,33 @@ Player Name Y (Batter)
                         stats.bestBowlingFigure = { wickets: p.W, runs: p.Runs };
                     }
                     
+                    // Add accumulated fifties/hundreds from the match
                     stats.fifties += matchFifties.get(key) || 0;
                     stats.hundreds += matchHundreds.get(key) || 0;
                 }
             });
 
-            // 4. Update Overall Best Records
+            // 4. Update Overall Best Records (Single Match Best)
             allPlayersInMatch.forEach(p => {
                 if (p.B > 0 || p.Balls > 0) {
                     const team = gameState.teams['A'].players.includes(p) ? gameState.teams['A'] : gameState.teams['B'];
                     const teamName = team.name;
 
-                    if (!records.bestBatting || p.R > records.bestBatting.runs) {
-                        records.bestBatting = { runs: p.R, playerName: p.name, teamName: teamName };
+                    // Use the topScore logic to find the best innings score for this match
+                    const highestInningsScoreInMatch = team.inningsScorecardHistory
+                                                .flatMap(snapshot => snapshot.filter(sp => sp.name === p.name))
+                                                .reduce((max, sp) => Math.max(max, sp.R), 0);
+
+                    if (!records.bestBatting || highestInningsScoreInMatch > records.bestBatting.runs) {
+                        if(highestInningsScoreInMatch > 0) { // Only update if a score was actually made
+                            records.bestBatting = { runs: highestInningsScoreInMatch, playerName: p.name, teamName: teamName };
+                        }
                     }
 
                     if (!records.bestBowling || p.W > records.bestBowling.wickets || (p.W === records.bestBowling.wickets && p.Runs < records.bestBowling.runs)) {
-                        records.bestBowling = { wickets: p.W, runs: p.Runs, playerName: p.name, teamName: teamName };
+                        if(p.W > 0) { // Only update if wickets were actually taken
+                            records.bestBowling = { wickets: p.W, runs: p.Runs, playerName: p.name, teamName: teamName };
+                        }
                     }
                 }
             });
@@ -2441,6 +2792,7 @@ Player Name Y (Batter)
                 `;
             };
 
+            // Using the team IDs established during the toss/setup for reliable naming
             const team1ActualName = gameState.teams[gameState.testMatchState.team1Id || gameState.userTeamId]?.name || 'Team 1';
             const team2ActualName = gameState.teams[gameState.testMatchState.team2Id || gameState.compTeamId]?.name || 'Team 2';
             
@@ -2488,19 +2840,19 @@ Player Name Y (Batter)
                     ` : ` <!-- Test Match Specific Innings Display -->
                         <div class="grid md:grid-cols-2 gap-6 mb-10">
                             <div>
-                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 1</h3>
+                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 1 (${team1ActualName})</h3>
                                 ${renderDetails(summary.innings1, team1ActualName, 1)}
                             </div>
                             <div>
-                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 2</h3>
+                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 2 (${team2ActualName})</h3>
                                 ${renderDetails(summary.innings2, team2ActualName, 1)}
                             </div>
                             <div>
-                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 3</h3>
+                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 3 (${team1ActualName})</h3>
                                 ${renderDetails(summary.innings3, team1ActualName, 2)}
                             </div>
                             <div>
-                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 4</h3>
+                                <h3 class="text-2xl font-bold mb-3 text-cricket-green border-b-2 pb-2">Innings 4 (${team2ActualName})</h3>
                                 ${renderDetails(summary.innings4, team2ActualName, 2)}
                             </div>
                         </div>
@@ -2546,7 +2898,7 @@ Player Name Y (Batter)
                 currentSort.direction = (currentSort.direction === 'asc') ? 'desc' : 'asc';
             } else {
                 currentSort.column = column;
-                currentSort.direction = (column === 'name') ? 'asc' : 'desc'; // Default name to asc, others to desc
+                currentSort.direction = (column === 'name' || column === 'econ') ? 'asc' : 'desc'; // Default name/econ to asc, others to desc
             }
             saveState();
             renderScreen(); // Re-render the records screen
@@ -2557,6 +2909,10 @@ Player Name Y (Batter)
             const records = isLeague ? leagueState.records : careerRecords;
             const recordType = isLeague ? 'League' : 'Career';
 
+            // Calculate Cumulative Awards for the selected mode
+            let cumulativeAwards = calculateCumulativeAwards(records);
+
+            
             const historyRows = records.matchHistory.map((m, i) => `
                 <tr class="${i % 2 === 0 ? 'bg-gray-50' : 'bg-white'}">
                     <td class="px-4 py-2">${m.date}</td>
@@ -2653,23 +3009,61 @@ Player Name Y (Batter)
                     sortIconElement.innerHTML = sortDirection === 'asc' ? ' &#9650;' : ' &#9660;'; // Up/Down arrow
                 }
             }, 0);
+            
+            let awardsHtml = '';
+
+            // Use the generalized awards for both career and league now
+            if (cumulativeAwards.manOfTheTournament.score > -Infinity && cumulativeAwards.manOfTheTournament.name !== 'N/A') {
+                awardsHtml = `
+                    <h3 class="text-2xl font-extrabold text-center mb-6 text-${isLeague ? 'purple-700' : 'cricket-green'}">${recordType} Highlights & Awards</h3>
+                    <div class="grid md:grid-cols-3 gap-6 mb-8 text-center">
+                        
+                        <!-- Man of the Tournament/Career -->
+                        <div class="p-4 bg-yellow-100 text-gray-800 card border-4 border-cricket-gold md:col-span-3">
+                            <h3 class="text-xl font-bold mb-2">Man of the ${isLeague ? 'Tournament' : 'Career'}</h3>
+                            <p class="text-4xl font-extrabold text-cricket-green mt-2">${cumulativeAwards.manOfTheTournament.name}</p>
+                            <p class="text-lg text-gray-600">(${cumulativeAwards.manOfTheTournament.teamName})</p>
+                            <p class="text-md font-semibold text-gray-800 mt-3 italic">Reason: ${cumulativeAwards.manOfTheTournament.reason}</p>
+                        </div>
+                        
+                        <!-- Orange Cap -->
+                        <div class="p-4 bg-orange-100 text-gray-800 card border-2 border-orange-400">
+                            <h3 class="text-xl font-bold mb-2 text-orange-600">Orange Cap (Top Total Runs)</h3>
+                            <p class="text-3xl font-extrabold">${cumulativeAwards.orangeCap.runs} Runs</p>
+                            <p class="text-lg">${cumulativeAwards.orangeCap.name} (${cumulativeAwards.orangeCap.teamName})</p>
+                        </div>
+
+                        <!-- Purple Cap -->
+                        <div class="p-4 bg-purple-100 text-gray-800 card border-2 border-purple-400">
+                            <h3 class="text-xl font-bold mb-2 text-purple-600">Purple Cap (Top Wickets)</h3>
+                            <p class="text-3xl font-extrabold">${cumulativeAwards.purpleCap.wickets} Wickets</p>
+                            <p class="text-lg">${cumulativeAwards.purpleCap.name} (${cumulativeAwards.purpleCap.teamName})</p>
+                        </div>
+                        
+                        <!-- Highest Score (Match Best) -->
+                        <div class="p-4 bg-blue-100 text-gray-800 card border-2 border-blue-400">
+                            <h3 class="text-xl font-bold mb-2 text-cricket-green">Highest Individual Score (Match Best)</h3>
+                            <p class="text-2xl font-extrabold">${bestBattingMatch}</p>
+                        </div>
+                        
+                        <!-- Best Bowling Figure (Match-level) -->
+                        <div class="p-4 bg-blue-100 text-gray-800 card border-2 border-blue-400">
+                            <h3 class="text-xl font-bold mb-2 text-cricket-green">Best Bowling Figure (Match Best)</h3>
+                            <p class="text-2xl font-extrabold">${bestBowlingMatch}</p>
+                        </div>
+                        
+                    </div>
+                `;
+            } else {
+                awardsHtml = `<div class="p-4 bg-gray-100 rounded-lg text-center mb-6 text-gray-600">No cumulative player data available to show highlights. Play a match!</div>`;
+            }
 
 
             return `
                 <div class="max-w-4xl mx-auto p-8 bg-white card">
                     <h2 class="text-4xl font-extrabold text-center mb-8 text-cricket-green">${recordType} Records & Statistics</h2>
 
-                    <!-- Highlights -->
-                    <div class="grid md:grid-cols-2 gap-6 mb-8 text-center">
-                        <div class="p-4 bg-cricket-green text-white card">
-                            <h3 class="text-xl font-bold mb-2">Highest Score (${recordType})</h3>
-                            <p class="text-2xl font-extrabold">${bestBattingMatch}</p>
-                        </div>
-                        <div class="p-4 bg-cricket-green text-white card">
-                            <h3 class="text-xl font-bold mb-2">Best Bowling (${recordType})</h3>
-                            <p class="text-2xl font-extrabold">${bestBowlingMatch}</p>
-                        </div>
-                    </div>
+                    ${awardsHtml}
 
                     <!-- Player Stats Table -->
                     <h3 class="text-2xl font-bold mb-4 text-gray-700 border-b pb-2">Overall Player Stats</h3>
@@ -2759,7 +3153,7 @@ Player Name Y (Batter)
 
             gameState.teams[teamId].name = newNameTrimmed;
             saveState();
-            renderScreen(); 
+            // Re-render handled by TeamEditor blur, but explicitly call it if necessary (already handled later in process)
         };
 
         /** Updates a specific player's name in the game state. */
@@ -2776,8 +3170,7 @@ Player Name Y (Batter)
                 return;
             }
 
-            player.name = newNameTrimmed; 
-
+            // Perform statistical key update/merge BEFORE updating player name in gameState
             const recordsToUpdate = [careerRecords];
             if (leagueState.isActive) recordsToUpdate.push(leagueState.records);
             
@@ -2786,12 +3179,8 @@ Player Name Y (Batter)
                 const newKey = `${newNameTrimmed}_${teamName}`;
 
                 if (records.playerStats[oldKey]) {
-                    if (!records.playerStats[newKey]) {
-                        records.playerStats[newKey] = records.playerStats[oldKey];
-                        records.playerStats[newKey].name = newNameTrimmed; 
-                        delete records.playerStats[oldKey];
-                    } else {
-                        // Merge logic for stats update remains complex and standard across both record sets
+                    if (records.playerStats[newKey]) {
+                        // Merge old stats into existing new stats
                         const existingStats = records.playerStats[newKey];
                         const oldStats = records.playerStats[oldKey];
 
@@ -2811,11 +3200,15 @@ Player Name Y (Batter)
                             (oldStats.bestBowlingFigure.wickets === existingStats.bestBowlingFigure.wickets && oldStats.bestBowlingFigure.runs < existingStats.bestBowlingFigure.runs)) {
                             existingStats.bestBowlingFigure = oldStats.bestBowlingFigure;
                         }
-                        delete records.playerStats[oldKey];
+                    } else {
+                        // Move stats to new key
+                        records.playerStats[newKey] = records.playerStats[oldKey];
+                        records.playerStats[newKey].name = newNameTrimmed; 
                     }
+                    delete records.playerStats[oldKey];
                 } else {
                     if (!records.playerStats[newKey]) {
-                        // Initialize new player record if it doesn't exist
+                        // Initialize new player record if it doesn't exist (no historical stats)
                         records.playerStats[newKey] = {
                             name: newNameTrimmed, teamName: teamName, R: 0, B: 0, W: 0, Runs: 0, Matches: 0, totalBallsBowled: 0,
                             topScore: 0, bestBowlingFigure: { wickets: 0, runs: Infinity }, fifties: 0, hundreds: 0
@@ -2823,6 +3216,8 @@ Player Name Y (Batter)
                     }
                 }
             });
+
+            player.name = newNameTrimmed; 
             saveState();
             renderScreen(); 
         };
@@ -2865,14 +3260,14 @@ Player Name Y (Batter)
                 const oldTeamName = gameState.teams[teamId].name;
                 const newTeamName = preset.name;
                 
-                // If the name is changing, we must update all player records' keys
+                // 1. Handle team name change if needed (updates player records in storage)
                 if (oldTeamName !== newTeamName) {
                     updateTeamName(teamId, newTeamName); 
                 } else {
                     gameState.teams[teamId].name = newTeamName;
                 }
                 
-                // Map preset players to the game's player stats structure
+                // 2. Map preset players to the game's player stats structure
                 gameState.teams[teamId].players = preset.players.map(p => getNewPlayerStats(p.name, p.role));
                 
                 if (teamId === 'A') {
@@ -2881,7 +3276,7 @@ Player Name Y (Batter)
                     gameState.selectedPresetTeamB = presetKey;
                 }
 
-                // Initialize records for all preset players if they don't exist
+                // 3. Initialize records for all preset players if they don't exist
                 const recordsToUpdate = [careerRecords];
                 if (leagueState.isActive) recordsToUpdate.push(leagueState.records);
 
@@ -2913,11 +3308,11 @@ Player Name Y (Batter)
             feedback.textContent = '';
 
             let prefillText = '';
-            prefillText += `${gameState.teams['A'].name}:\n`;
+            prefillText += `[${gameState.teams['A'].name}]:\n`;
             gameState.teams['A'].players.forEach(p => {
                 prefillText += `${p.name} (${p.role})\n`;
             });
-            prefillText += `\n${gameState.teams['B'].name}:\n`;
+            prefillText += `\n[${gameState.teams['B'].name}]:\n`;
             gameState.teams['B'].players.forEach(p => {
                 prefillText += `${p.name} (${p.role})\n`;
             });
@@ -2997,8 +3392,8 @@ Output must be a JSON object with the following structure:
 Important:
 - Always assign players to "A" or "B" based on the order they appear. The first team described is Team A, the second is Team B.
 - Ensure roles are one of: 'Batter', 'Wicket Keeper', 'All Rounder', 'Bowler'. If an unrecognized role is found, default to 'Batter'.
-- If a team has fewer than 11 players in the input, only include the players provided. Do not invent missing players.
-- If a player name is empty, skip that player.
+- If a team has fewer than 11 players in the input, fill the remaining slots with generic player names (Batter X, Bowler Y, etc.) and appropriate roles to maintain 11 total players.
+- If a player name is empty, try to replace it with a generic name for that position/role.
 - Make sure the JSON is perfectly formatted and valid, with no extra text or markdown outside the JSON block.
 
 User Input:
@@ -3250,11 +3645,21 @@ ${input}`;
             }
 
             // Special handling for innings break modal if user reloads mid-break
-            if (gameState.currentScreen === 'match' && gameState.innings > 1 && !gameState.matchResult) {
+            if (gameState.currentScreen === 'match' && gameState.isMatchActive && gameState.innings > 1 && !gameState.matchResult) {
+                 // Ensure simulation is off
                 if(gameState.isSimulating) gameState.isSimulating = false;
-                showInningsBreakMessage(); 
-            } else if (gameState.currentScreen === 'match' && gameState.matchResult) {
-                 navigateTo('summary');
+                
+                // If it's the start of an innings (runs/wickets are 0), show the break message
+                if (gameState.score.batting.runs === 0 && gameState.score.batting.wickets === 0) {
+                     // Since resetCurrentInningsScoreState cleared the score, we assume we are at the beginning of the innings
+                     showInningsBreakMessage(); 
+                } else {
+                     // Otherwise, just render the match screen to continue mid-innings
+                     renderScreen();
+                }
+            } else if (gameState.matchResult) {
+                // If the game state contains a result, immediately navigate to summary (preventing loss of result)
+                navigateTo('summary');
             }
             else {
                 renderScreen();
