@@ -2490,7 +2490,7 @@ Player Name Y (Batter)
         // --- SUMMARY & RECORDS LOGIC ---
 
         /** Calculates Man of the Tournament, Orange Cap, and Purple Cap winners. */
-        const calculateLeagueAwards = (records) => {
+        const calculateCumulativeAwards = (records) => {
             const playerStatsArray = Object.values(records.playerStats);
 
             let orangeCap = { name: 'N/A', runs: 0, teamName: '' };
@@ -2909,11 +2909,9 @@ Player Name Y (Batter)
             const records = isLeague ? leagueState.records : careerRecords;
             const recordType = isLeague ? 'League' : 'Career';
 
-            // Calculate League Awards if in League mode
-            let leagueAwards = {};
-            if (isLeague) {
-                leagueAwards = calculateLeagueAwards(records);
-            }
+            // Calculate Cumulative Awards for the selected mode
+            let cumulativeAwards = calculateCumulativeAwards(records);
+
             
             const historyRows = records.matchHistory.map((m, i) => `
                 <tr class="${i % 2 === 0 ? 'bg-gray-50' : 'bg-white'}">
@@ -3012,64 +3010,52 @@ Player Name Y (Batter)
                 }
             }, 0);
             
-            let leagueAwardsHtml = '';
-            let careerHighlightsHtml = '';
-            
-            if (isLeague) {
-                leagueAwardsHtml = `
-                    <h3 class="text-2xl font-extrabold text-center mb-6 text-purple-700">Tournament Awards</h3>
+            let awardsHtml = '';
+
+            // Use the generalized awards for both career and league now
+            if (cumulativeAwards.manOfTheTournament.score > -Infinity && cumulativeAwards.manOfTheTournament.name !== 'N/A') {
+                awardsHtml = `
+                    <h3 class="text-2xl font-extrabold text-center mb-6 text-${isLeague ? 'purple-700' : 'cricket-green'}">${recordType} Highlights & Awards</h3>
                     <div class="grid md:grid-cols-3 gap-6 mb-8 text-center">
                         
-                        <!-- Man of the Tournament -->
+                        <!-- Man of the Tournament/Career -->
                         <div class="p-4 bg-yellow-100 text-gray-800 card border-4 border-cricket-gold md:col-span-3">
-                            <h3 class="text-xl font-bold mb-2">Man of the Tournament</h3>
-                            <p class="text-4xl font-extrabold text-cricket-green mt-2">${leagueAwards.manOfTheTournament.name}</p>
-                            <p class="text-lg text-gray-600">(${leagueAwards.manOfTheTournament.teamName})</p>
-                            <p class="text-md font-semibold text-gray-800 mt-3 italic">Reason: ${leagueAwards.manOfTheTournament.reason}</p>
+                            <h3 class="text-xl font-bold mb-2">Man of the ${isLeague ? 'Tournament' : 'Career'}</h3>
+                            <p class="text-4xl font-extrabold text-cricket-green mt-2">${cumulativeAwards.manOfTheTournament.name}</p>
+                            <p class="text-lg text-gray-600">(${cumulativeAwards.manOfTheTournament.teamName})</p>
+                            <p class="text-md font-semibold text-gray-800 mt-3 italic">Reason: ${cumulativeAwards.manOfTheTournament.reason}</p>
                         </div>
                         
                         <!-- Orange Cap -->
                         <div class="p-4 bg-orange-100 text-gray-800 card border-2 border-orange-400">
                             <h3 class="text-xl font-bold mb-2 text-orange-600">Orange Cap (Top Total Runs)</h3>
-                            <p class="text-3xl font-extrabold">${leagueAwards.orangeCap.runs} Runs</p>
-                            <p class="text-lg">${leagueAwards.orangeCap.name} (${leagueAwards.orangeCap.teamName})</p>
+                            <p class="text-3xl font-extrabold">${cumulativeAwards.orangeCap.runs} Runs</p>
+                            <p class="text-lg">${cumulativeAwards.orangeCap.name} (${cumulativeAwards.orangeCap.teamName})</p>
                         </div>
 
                         <!-- Purple Cap -->
                         <div class="p-4 bg-purple-100 text-gray-800 card border-2 border-purple-400">
                             <h3 class="text-xl font-bold mb-2 text-purple-600">Purple Cap (Top Wickets)</h3>
-                            <p class="text-3xl font-extrabold">${leagueAwards.purpleCap.wickets} Wickets</p>
-                            <p class="text-lg">${leagueAwards.purpleCap.name} (${leagueAwards.purpleCap.teamName})</p>
+                            <p class="text-3xl font-extrabold">${cumulativeAwards.purpleCap.wickets} Wickets</p>
+                            <p class="text-lg">${cumulativeAwards.purpleCap.name} (${cumulativeAwards.purpleCap.teamName})</p>
                         </div>
                         
-                        <!-- Highest Score -->
+                        <!-- Highest Score (Match Best) -->
                         <div class="p-4 bg-blue-100 text-gray-800 card border-2 border-blue-400">
-                            <h3 class="text-xl font-bold mb-2 text-cricket-green">Highest Individual Score</h3>
+                            <h3 class="text-xl font-bold mb-2 text-cricket-green">Highest Individual Score (Match Best)</h3>
                             <p class="text-2xl font-extrabold">${bestBattingMatch}</p>
                         </div>
                         
                         <!-- Best Bowling Figure (Match-level) -->
                         <div class="p-4 bg-blue-100 text-gray-800 card border-2 border-blue-400">
-                            <h3 class="text-xl font-bold mb-2 text-cricket-green">Best Bowling Figure</h3>
+                            <h3 class="text-xl font-bold mb-2 text-cricket-green">Best Bowling Figure (Match Best)</h3>
                             <p class="text-2xl font-extrabold">${bestBowlingMatch}</p>
                         </div>
                         
                     </div>
                 `;
             } else {
-                 careerHighlightsHtml = `
-                    <h3 class="text-2xl font-extrabold text-center mb-6 text-cricket-green">Career Highlights</h3>
-                    <div class="grid md:grid-cols-2 gap-6 mb-8 text-center">
-                        <div class="p-4 bg-cricket-green text-white card">
-                            <h3 class="text-xl font-bold mb-2">Highest Score (Career)</h3>
-                            <p class="text-2xl font-extrabold">${bestBattingMatch}</p>
-                        </div>
-                        <div class="p-4 bg-cricket-green text-white card">
-                            <h3 class="text-xl font-bold mb-2">Best Bowling (Career)</h3>
-                            <p class="text-2xl font-extrabold">${bestBowlingMatch}</p>
-                        </div>
-                    </div>
-                `;
+                awardsHtml = `<div class="p-4 bg-gray-100 rounded-lg text-center mb-6 text-gray-600">No cumulative player data available to show highlights. Play a match!</div>`;
             }
 
 
@@ -3077,7 +3063,7 @@ Player Name Y (Batter)
                 <div class="max-w-4xl mx-auto p-8 bg-white card">
                     <h2 class="text-4xl font-extrabold text-center mb-8 text-cricket-green">${recordType} Records & Statistics</h2>
 
-                    ${isLeague ? leagueAwardsHtml : careerHighlightsHtml}
+                    ${awardsHtml}
 
                     <!-- Player Stats Table -->
                     <h3 class="text-2xl font-bold mb-4 text-gray-700 border-b pb-2">Overall Player Stats</h3>
@@ -3682,5 +3668,220 @@ ${input}`;
     </script>
 </body>
 </html>
----------------------------------------
-Please include Orange Cap, Purple Cap, Best Bowling Figures, Highest Individual Score, and Man of the Tournament for the Exhibition Match, Records and Statistics as well. Career Highlights, I mean Career Records and Statistics there as well, just same as the League, keep the statistics, keep the highlights, that's what I mean to say. So for making that change, which lines of code need to be modified, please point them out to me, and that's it. Thank you.
+
+----------------------------------------------------
+
+
+# **Mumbai Indians (MI):**
+
+Rohit Sharma (Batter)
+Quinton de Kock (Wicket Keeper)
+Suryakumar Yadav (Batter)
+Sachin Tendulkar (Batter)
+Kieron Pollard (All Rounder)
+Hardik Pandya (All Rounder)
+Krunal Pandya (All Rounder)
+Harbhajan Singh (Bowler)
+Mitchell Johnson (Bowler)
+Jasprit Bumrah (Bowler)
+Lasith Malinga (Bowler)
+
+---
+
+# **Chennai Super Kings (CSK):**
+
+Shane Watson (All Rounder)
+Faf du Plessis (Batter)
+Suresh Raina (Batter)
+Ambati Rayudu (Batter)
+MS Dhoni (Wicket Keeper)
+Ravindra Jadeja (All Rounder)
+Dwayne Bravo (All Rounder)
+Moeen Ali (All Rounder)
+Deepak Chahar (Bowler)
+Ravichandran Ashwin (Bowler)
+Muttiah Muralitharan (Bowler)
+
+---
+
+# **Royal Challengers Bangalore (RCB):**
+
+Chris Gayle (Batter)
+Virat Kohli (Batter)
+AB de Villiers (Wicket Keeper)
+Faf du Plessis (Batter)
+Glenn Maxwell (All Rounder)
+Dinesh Karthik (Wicket Keeper)
+Yuzvendra Chahal (Bowler)
+Harshal Patel (Bowler)
+Mitchell Starc (Bowler)
+Mohammed Siraj (Bowler)
+Vinay Kumar (Bowler)
+
+---
+
+# **Kolkata Knight Riders (KKR):**
+
+Gautam Gambhir (Batter)
+Sunil Narine (All Rounder)
+Robin Uthappa (Wicket Keeper)
+Shreyas Iyer (Batter)
+Yusuf Pathan (All Rounder)
+Andre Russell (All Rounder)
+Dinesh Karthik (Wicket Keeper)
+Shakib Al Hasan (All Rounder)
+Pat Cummins (Bowler)
+Varun Chakravarthy (Bowler)
+Umesh Yadav (Bowler)
+
+---
+
+# **Rajasthan Royals (RR):**
+
+Jos Buttler (Wicket Keeper)
+Shane Watson (All Rounder)
+Sanju Samson (Wicket Keeper)
+Ajinkya Rahane (Batter)
+Ben Stokes (All Rounder)
+Yusuf Pathan (All Rounder)
+Ravindra Jadeja (All Rounder)
+Jofra Archer (Bowler)
+Shane Warne (Bowler)
+Siddharth Trivedi (Bowler)
+Sandeep Sharma (Bowler)
+
+---
+
+# **Delhi Capitals (DC):**
+
+David Warner (Batter)
+Virender Sehwag (Batter)
+Shreyas Iyer (Batter)
+Rishabh Pant (Wicket Keeper)
+JP Duminy (All Rounder)
+Axar Patel (All Rounder)
+Marcus Stoinis (All Rounder)
+Amit Mishra (Bowler)
+Kagiso Rabada (Bowler)
+Anrich Nortje (Bowler)
+Mohammed Shami (Bowler)
+
+---
+
+# **Punjab Kings (PBKS):**
+
+KL Rahul (Wicket Keeper)
+Chris Gayle (Batter)
+Mayank Agarwal (Batter)
+Shaun Marsh (Batter)
+Glenn Maxwell (All Rounder)
+David Miller (Batter)
+Irfan Pathan (All Rounder)
+Axar Patel (All Rounder)
+Mohammed Shami (Bowler)
+Sandeep Sharma (Bowler)
+Ravi Bishnoi (Bowler)
+
+---
+
+# **Sunrisers Hyderabad (SRH):**
+
+David Warner (Batter)
+Shikhar Dhawan (Batter)
+Kane Williamson (Batter)
+Manish Pandey (Batter)
+Jonny Bairstow (Wicket Keeper)
+Rashid Khan (All Rounder)
+Vijay Shankar (All Rounder)
+Bhuvneshwar Kumar (Bowler)
+Umran Malik (Bowler)
+T. Natarajan (Bowler)
+Dale Steyn (Bowler)
+
+---
+
+# **Gujarat Titans (GT):**
+
+Shubman Gill (Batter)
+Wriddhiman Saha (Wicket Keeper)
+Sai Sudharsan (Batter)
+Hardik Pandya (All Rounder)
+David Miller (Batter)
+Rahul Tewatia (All Rounder)
+Rashid Khan (All Rounder)
+Mohammed Shami (Bowler)
+Noor Ahmad (Bowler)
+Mohit Sharma (Bowler)
+Lockie Ferguson (Bowler)
+
+---
+
+# **Lucknow Super Giants (LSG):**
+
+KL Rahul (Batter)
+Quinton de Kock (Wicket Keeper)
+Marcus Stoinis (All Rounder)
+Deepak Hooda (Batter)
+Ayush Badoni (Batter)
+Nicholas Pooran (Wicket Keeper)
+Krunal Pandya (All Rounder)
+Ravi Bishnoi (Bowler)
+Mark Wood (Bowler)
+Mohsin Khan (Bowler)
+Avesh Khan (Bowler)
+
+---
+
+# **Kochi Tuskers Kerala (KTK):**
+
+Brendon McCullum (Wicket Keeper)
+Mahela Jayawardene (Batter)
+Brad Hodge (Batter)
+VVS Laxman (Batter)
+Ravindra Jadeja (All Rounder)
+Parthiv Patel (Wicket Keeper)
+Thisara Perera (All Rounder)
+Vinay Kumar (Bowler)
+RP Singh (Bowler)
+Sreesanth (Bowler)
+Ramesh Powar (Bowler)
+
+---
+
+# **Pune Warriors India (PWI):**
+
+Robin Uthappa (Wicket Keeper)
+Aaron Finch (Batter)
+Steve Smith (Batter)
+Yuvraj Singh (All Rounder)
+Angelo Mathews (All Rounder)
+Mitchell Marsh (All Rounder)
+Jesse Ryder (All Rounder)
+Bhuvneshwar Kumar (Bowler)
+Murali Kartik (Bowler)
+Ashok Dinda (Bowler)
+Wayne Parnell (Bowler)
+
+---
+
+# **Rising Pune Supergiant (RPS):**
+
+Ajinkya Rahane (Batter)
+Faf du Plessis (Batter)
+Steve Smith (Batter)
+MS Dhoni (Wicket Keeper)
+Ben Stokes (All Rounder)
+Manoj Tiwary (Batter)
+Washington Sundar (All Rounder)
+Imran Tahir (Bowler)
+Jaydev Unadkat (Bowler)
+Adam Zampa (Bowler)
+Shardul Thakur (Bowler)
+
+---
+
+Now what I want to do is I want to introduce two formats where one format is already there in this Site here, which is World Super League Yeah, and after that I want another format which will be World Premier League, so The World Super League is already there, so I want the division to be like this The teams that I'm providing will play only World Premier League and the teams that Are already there the eight preset teams Which are national teams Will play the World Super League so World Super League will be like World Cup, but in league format and World Premier League will also be The same format the only difference is The teams Everything will be same with World Super League, okay All the features that World Super League has it will also have those same features So I wanted to make that.
+
+I want these teams that I have just provided you above to be added into the preset teams list. And what I want to do next, another thing that I want you to do next is divide the teams into two parts. The first eight preset teams which are already present in the code will be named, will be categorized under national teams. And the new teams that I have provided above will be categorized under domestic teams. So, yeah, that's it. And as I said before, I need two tournament formats. One is already present. The only change that you have to do is, only the national teams will play World Super League. And only the new teams that I have added, which are called the domestic teams, the domestic teams will play only the World Premier League. So, the thing is that for Exhibition Match, the user can choose to play with any team against any team they want. The thing is that, that's why there will be two divisions of categories, national teams and domestic teams, only for Exhibition Matches. But for World Super League and World Premier League, the division must be clear because there will be only one type of teams that will play the tournament. Only one category of team will play one tournament. Just like, only national teams will play World Super League and only domestic teams will play World Premier League. I hope you understand what I'm trying to say here.
+
+I hope you understood everything I just said. Now, all you have to do is send me the lines of code that need to be modified or changed.
