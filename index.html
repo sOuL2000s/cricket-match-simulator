@@ -587,6 +587,8 @@ Player Name Y (Batter)
             selectedOvers: LIMITED_OVERS_OPTIONS[0], // Default for limited overs (from start menu)
             oversPerInnings: LIMITED_OVERS_OPTIONS[0], // Actual overs for current match type/settings
             isSimulating: false, // flag to indicate if simulation is active
+            isSimulatingTournament: false, // flag to indicate rapid tournament simulation is running
+            // Track selected preset keys for initial setup and display in dropdowns
 
             // Track selected preset keys for initial setup and display in dropdowns
             // Track selected preset keys for initial setup and display in dropdowns
@@ -1786,6 +1788,9 @@ Player Name Y (Batter)
                     ${currentFixture.status === 'live' ? 'Resume Current Match: ' : 'Play Next Match: '}
                     ${nextMatchDisplay}
                 </button>
+                <button onclick="simulateTournament()" class="btn-primary w-full text-xl bg-cricket-red hover:bg-red-700 mb-4">
+                    Simulate Remaining Tournament
+                </button>
             ` : `
                 <button onclick="finishLeague()" class="btn-primary w-full text-xl bg-cricket-gold text-cricket-green hover:bg-yellow-500 mb-4">
                     League Completed - View Final Table
@@ -1858,7 +1863,7 @@ Player Name Y (Batter)
         };
         
         /** Sets up the game state for a new league match based on a fixture. */
-        const setupLeagueMatch = (fixture) => {
+        const setupLeagueMatch = (fixture, isSimulation = false) => {
             if (!leagueState.isActive) {
                 console.error("League is not active or leagueState missing.");
                 navigateTo('league_home');
@@ -1914,7 +1919,9 @@ Player Name Y (Batter)
             } 
             
             saveState();
-            navigateTo('toss');
+            if (!isSimulation) {
+                navigateTo('toss');
+            }
         };
 
         /** Updates the selected overs in gameState */
@@ -2441,6 +2448,8 @@ Player Name Y (Batter)
 
         /** Displays a modal/message for the innings break. */
         const showInningsBreakMessage = () => {
+            if (gameState.isSimulatingTournament) return; // Skip modal and pause if simulating tournament
+            
             let messageTitle = "INNINGS BREAK!";
             let mainMessage = "";
             let continueButtonText = "Continue";
@@ -2614,9 +2623,10 @@ Player Name Y (Batter)
             }
 
             // 4. Navigate to Summary Screen
-            navigateTo('summary');
+            if (!gameState.isSimulatingTournament) { // If simulating tournament, skip navigation
+                 navigateTo('summary');
+            }
         };
-        
 
         /** Calculates match run/ball data for NRR update. */
         const calculateMatchNRRData = (matchData, teamId) => {
@@ -2765,26 +2775,126 @@ Player Name Y (Batter)
             
             saveState(); // Save league state immediately after updating table
         };
-        
-        /** Advances to the next match in the league after a match is completed. */
-        const startNextLeagueMatch = () => {
-            // 1. Clear volatile match state (scores, current innings, summary)
-            clearMatchScoreboardState(); 
+
+        /** Synchronously simulates a single match (up to 4 innings) for the current state. */
+        const simulateSingleMatch = (fixture) => {
+            // Ensure necessary state is set for the simulation flow (toss must occur first)
+            if (!gameState.tossWinner) {
+                 // Random toss outcome for simulation
+                 gameState.tossWinner = Math.random() < 0.5 ? 'user' : 'comp'; 
+                 gameState.tossDecision = Math.random() < 0.5 ? 'bat' : 'bowl';
+                 gameState.isUserBatting = (gameState.tossWinner === 'user' && gameState.tossDecision === 'bat') || (gameState.tossWinner === 'comp' && gameState.tossDecision === 'bowl');
+                 gameState.currentBattingTeamId = gameState.isUserBatting ? gameState.userTeamId : gameState.compTeamId;
+
+                 if (gameState.gameMode === 'test_match') {
+                     gameState.testMatchState.team1Id = gameState.currentBattingTeamId;
+                     gameState.testMatchState.team2Id = (gameState.currentBattingTeamId === 'A' ? 'B' : 'A');
+                 }
+                 setupNewInningsBowling();
+            }
+
+            const maxInnings = gameState.gameMode === 'test_match' ? 4 : 2;
             
-            // 2. Find and setup the NEXT UPCOMING fixture
-            const nextIndex = leagueState.fixtures.findIndex(f => f.status === 'upcoming');
-            
-            if (nextIndex !== -1) {
-                const nextFixture = leagueState.fixtures[nextIndex];
-                setupLeagueMatch(nextFixture); // This handles all state setup and navigation to 'toss'
-            } else {
-                saveState();
-                navigateTo('league_home');
+            while (!gameState.matchResult && gameState.innings <= maxInnings) {
+                let inningsEnded = false;
+                
+                // Keep rolling until innings ends by wicket or overs
+                while (!inningsEnded && gameState.score.batting.wickets < 10 && gameState.score.batting.overs < gameState.oversPerInnings) {
+                    inningsEnded = handleRollSync(); 
+                }
+                
+                // If the loop broke without setting matchResult (i.e., due to innings end)
+                // The required endInnings() was called by checkInningsEnd() inside handleRollSync
+                if (!gameState.matchResult && inningsEnded) {
+                    // State is now prepared for the next innings/match end
+                }
             }
         };
 
+        /** Simulates all remaining fixtures in the active league. */
+        const simulateTournament = async () => {
+            if (!leagueState.isActive) {
+                alert("League is not active.");
+                return;
+            }
+            if (!confirm(`Are you sure you want to simulate all remaining ${leagueState.fixtures.filter(f => f.status === 'upcoming' || f.status === 'live').length} matches in the ${leagueState.leagueName}?`)) {
+                return;
+            }
+
+            // Save state immediately to ensure fixture tracking/UI is locked down
+            gameState.isSimulatingTournament = true;
+            gameState.isSimulating = true;
+            saveState(); // Lock UI
+            
+            const upcomingFixtures = leagueState.fixtures.filter(f => f.status === 'upcoming' || f.status === 'live');
+            const totalMatches = upcomingFixtures.length;
+
+            const appDiv = document.getElementById('app');
+            appDiv.innerHTML = `<div class="max-w-xl mx-auto p-8 bg-white card text-center"><h2 class="text-4xl font-extrabold text-cricket-green">Simulating Tournament...</h2><p id="simulation-progress" class="text-2xl font-bold mt-4">0% completed. (0 / ${totalMatches} matches)</p><svg class="animate-spin h-10 w-10 text-cricket-green mx-auto mt-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></path></svg></div>`;
+            
+            let matchesCompleted = 0;
+            const progressDisplay = document.getElementById('simulation-progress');
+
+            // Allow UI to update before starting the synchronous simulation loop
+            await new Promise(resolve => setTimeout(resolve, 50)); 
+            
+            try {
+                for (let i = 0; i < upcomingFixtures.length; i++) {
+                    const fixture = upcomingFixtures[i];
+                    
+                    // 1. Setup the match state, passing 'true' to suppress navigation
+                    setupLeagueMatch(fixture, true); 
+                    
+                    // 2. Force toss/decision
+                    performToss(); 
+                    if (!gameState.tossDecision) { 
+                        userChooseBat();
+                    }
+
+                    // 3. Run synchronous match simulation
+                    simulateSingleMatch(fixture); 
+                    
+                    // 4. Update progress UI
+                    matchesCompleted++;
+                    if (progressDisplay && totalMatches > 0) {
+                        const percentage = Math.round((matchesCompleted / totalMatches) * 100);
+                        progressDisplay.textContent = `${percentage}% completed. (${matchesCompleted} / ${totalMatches} matches)`;
+                    }
+                    
+                    // 5. Yield control briefly to the browser to ensure the update renders
+                    await new Promise(resolve => setTimeout(resolve, 0)); 
+                }
+                
+                alert(`${totalMatches} matches simulated. Tournament complete! The league table is final.`);
+                
+            } catch (e) {
+                console.error("Tournament simulation failed:", e);
+                alert("An error occurred during tournament simulation. Check console.");
+            } finally {
+                gameState.isSimulatingTournament = false;
+                gameState.isSimulating = false;
+                // Reset match state variables cleanly and navigate back to league home
+                resetMatchState(false); 
+            }
+        };
 
         // --- SIMULATION CONTROL ---
+
+        /** Synchronous version of the roll handler for rapid simulation. */
+        const handleRollSync = () => {
+            if (gameState.score.wickets === 10) return checkInningsEnd(); 
+            
+            // Always random dice rolls for sync mode
+            const batRoll = rollDice(); 
+            const bowlRoll = rollDice();
+            
+            const isOut = batRoll === bowlRoll;
+            const runsScored = isOut ? 0 : batRoll;
+
+            updateScore(isOut, runsScored);
+
+            return checkInningsEnd();
+        };
 
         /** Simulates rolls until the end of the specified phase. */
         const simulateMatch = async (simulateUntil = 'match_end') => {
@@ -2794,6 +2904,7 @@ Player Name Y (Batter)
             const initialInnings = gameState.innings; 
             saveState();
             renderScreen();
+
 
             const simulationLoop = async () => {
                 // Stop conditions:
