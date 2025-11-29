@@ -1220,7 +1220,7 @@ Player Name Y (Batter)
                         <div class="p-4 bg-gray-100 rounded-lg shadow-inner border border-gray-200">
                             <h4 class="text-lg font-bold mb-3 text-gray-700">Exhibition Series Simulation</h4>
                             <div class="flex space-x-2">
-                                <input type="number" id="num-exhibition-matches" value="5" min="1" max="100" class="p-2 border rounded-lg w-20 text-center flex-shrink-0" oninput="document.getElementById('sim-match-count').textContent = this.value">
+                                <input type="number" id="num-exhibition-matches" value="5" min="1" class="p-2 border rounded-lg w-20 text-center flex-shrink-0" oninput="document.getElementById('sim-match-count').textContent = this.value">
                                 <button onclick="simulateExhibitionMatches()" class="btn-primary bg-yellow-600 hover:bg-yellow-700 flex-grow text-lg">
                                     Simulate <span id="sim-match-count">5</span> Matches
                                 </button>
@@ -2901,7 +2901,6 @@ Player Name Y (Batter)
                 alert("Please enter a valid number of matches (1 or more).");
                 return;
             }
-            if (numMatches > 100) numMatches = 100;
 
             if (!confirm(`Are you sure you want to simulate a series of ${numMatches} matches between ${gameState.teams['A'].name} and ${gameState.teams['B'].name}? Career Records will be updated.`)) {
                 return;

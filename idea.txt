@@ -1215,6 +1215,20 @@ Player Name Y (Batter)
                             Start New Exhibition Match
                             ${gameState.gameMode === 'limited_overs' ? `(${gameState.oversPerInnings} Overs)` : `(Test Match)`}
                         </button>
+                        
+                        <!-- Exhibition Series Simulation -->
+                        <div class="p-4 bg-gray-100 rounded-lg shadow-inner border border-gray-200">
+                            <h4 class="text-lg font-bold mb-3 text-gray-700">Exhibition Series Simulation</h4>
+                            <div class="flex space-x-2">
+                                <input type="number" id="num-exhibition-matches" value="5" min="1" max="100" class="p-2 border rounded-lg w-20 text-center flex-shrink-0" oninput="document.getElementById('sim-match-count').textContent = this.value">
+                                <button onclick="simulateExhibitionMatches()" class="btn-primary bg-yellow-600 hover:bg-yellow-700 flex-grow text-lg">
+                                    Simulate <span id="sim-match-count">5</span> Matches
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">Simulates multiple matches against the current opponent and updates Career Records.</p>
+                        </div>
+                        <!-- End Exhibition Series Simulation -->
+                        
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             ${wslButton}
                             ${wplButton}
@@ -2878,6 +2892,79 @@ Player Name Y (Batter)
             }
         };
 
+        // NEW: Simulates a series of exhibition matches in career mode.
+        const simulateExhibitionMatches = async () => {
+            const numMatchesInput = document.getElementById('num-exhibition-matches');
+            let numMatches = parseInt(numMatchesInput.value, 10);
+            
+            if (isNaN(numMatches) || numMatches <= 0) {
+                alert("Please enter a valid number of matches (1 or more).");
+                return;
+            }
+            if (numMatches > 100) numMatches = 100;
+
+            if (!confirm(`Are you sure you want to simulate a series of ${numMatches} matches between ${gameState.teams['A'].name} and ${gameState.teams['B'].name}? Career Records will be updated.`)) {
+                return;
+            }
+
+            gameState.isSimulatingTournament = true; // Use tournament flag for UI lock
+            gameState.isSimulating = true;
+            saveState(); 
+
+            const appDiv = document.getElementById('app');
+            appDiv.innerHTML = `<div class="max-w-xl mx-auto p-8 bg-white card text-center"><h2 class="text-4xl font-extrabold text-cricket-green">Simulating Exhibition Series...</h2><p id="simulation-progress" class="text-2xl font-bold mt-4">0% completed. (0 / ${numMatches} matches)</p><svg class="animate-spin h-10 w-10 text-cricket-green mx-auto mt-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></path></svg></div>`;
+            
+            let matchesCompleted = 0;
+            const progressDisplay = document.getElementById('simulation-progress');
+
+            await new Promise(resolve => setTimeout(resolve, 50)); 
+            
+            try {
+                for (let i = 0; i < numMatches; i++) {
+                    
+                    // 1. Reset match state
+                    clearMatchScoreboardState(); 
+                    
+                    // Restore context (important for endMatch record update logic)
+                    gameState.currentMode = 'career';
+                    gameState.gameMode = gameState.gameMode;
+                    gameState.oversPerInnings = gameState.oversPerInnings;
+                    gameState.isMatchActive = true; 
+
+                    // 2. Force toss/decision
+                    performToss(); 
+                    if (!gameState.tossDecision) { 
+                        // Fallback if toss logic failed to set decision
+                        userChooseBat();
+                    }
+
+                    // 3. Run synchronous match simulation (fixture is null as we don't need league fixture data)
+                    simulateSingleMatch(null); 
+                    
+                    // 4. Update progress UI
+                    matchesCompleted++;
+                    if (progressDisplay) {
+                        const percentage = Math.round((matchesCompleted / numMatches) * 100);
+                        progressDisplay.textContent = `${percentage}% completed. (${matchesCompleted} / ${numMatches} matches)`;
+                    }
+                    
+                    // 5. Yield control briefly to the browser 
+                    await new Promise(resolve => setTimeout(resolve, 0)); 
+                }
+                
+                alert(`${numMatches} exhibition matches simulated. Career Records have been updated.`);
+                
+            } catch (e) {
+                console.error("Exhibition series simulation failed:", e);
+                alert("An error occurred during simulation. Check console.");
+            } finally {
+                gameState.isSimulatingTournament = false;
+                gameState.isSimulating = false;
+                // resetMatchState(true) saves the final state and navigates to start.
+                resetMatchState(true); 
+            }
+        };
+
         // --- SIMULATION CONTROL ---
 
         /** Synchronous version of the roll handler for rapid simulation. */
@@ -4136,5 +4223,5 @@ ${input}`;
     </script>
 </body>
 </html>
--------------------------------------------
-just like full league simulation, let the user simulate a chosen number of exhibition matches.
+---------------------------------
+why is it only simulating 100 matches max on wxhibition match simulation. i want to be able to put any number i want.
