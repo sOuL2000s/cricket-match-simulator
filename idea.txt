@@ -1863,7 +1863,7 @@ Player Name Y (Batter)
         };
         
         /** Sets up the game state for a new league match based on a fixture. */
-        const setupLeagueMatch = (fixture) => {
+        const setupLeagueMatch = (fixture, isSimulation = false) => {
             if (!leagueState.isActive) {
                 console.error("League is not active or leagueState missing.");
                 navigateTo('league_home');
@@ -1919,7 +1919,9 @@ Player Name Y (Batter)
             } 
             
             saveState();
-            navigateTo('toss');
+            if (!isSimulation) {
+                navigateTo('toss');
+            }
         };
 
         /** Updates the selected overs in gameState */
@@ -2810,7 +2812,7 @@ Player Name Y (Batter)
         };
 
         /** Simulates all remaining fixtures in the active league. */
-        const simulateTournament = () => {
+        const simulateTournament = async () => {
             if (!leagueState.isActive) {
                 alert("League is not active.");
                 return;
@@ -2827,43 +2829,53 @@ Player Name Y (Batter)
             const upcomingFixtures = leagueState.fixtures.filter(f => f.status === 'upcoming' || f.status === 'live');
             const totalMatches = upcomingFixtures.length;
 
-            // Simple blocking UI feedback to indicate simulation is running
             const appDiv = document.getElementById('app');
-            appDiv.innerHTML = `<div class="max-w-xl mx-auto p-8 bg-white card text-center"><h2 class="text-4xl font-extrabold text-cricket-green">Simulating Tournament...</h2><p class="text-xl mt-4">Simulating ${totalMatches} matches. Please wait.</p><svg class="animate-spin h-10 w-10 text-cricket-green mx-auto mt-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></path></svg></div>`;
+            appDiv.innerHTML = `<div class="max-w-xl mx-auto p-8 bg-white card text-center"><h2 class="text-4xl font-extrabold text-cricket-green">Simulating Tournament...</h2><p id="simulation-progress" class="text-2xl font-bold mt-4">0% completed. (0 / ${totalMatches} matches)</p><svg class="animate-spin h-10 w-10 text-cricket-green mx-auto mt-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></path></svg></div>`;
             
-            // Use setTimeout 0 or a microtask to allow UI to update before blocking JS
-            setTimeout(() => {
-                try {
-                    for (let i = 0; i < upcomingFixtures.length; i++) {
-                        const fixture = upcomingFixtures[i];
-                        
-                        // 1. Setup the match state (clears old score, sets teams, marks fixture as 'live')
-                        setupLeagueMatch(fixture); 
-                        
-                        // 2. Force toss/decision
-                        performToss(); 
-                        if (!gameState.tossDecision) { 
-                            userChooseBat();
-                        }
+            let matchesCompleted = 0;
+            const progressDisplay = document.getElementById('simulation-progress');
 
-                        // 3. Run synchronous match simulation
-                        simulateSingleMatch(fixture); 
-                        
-                        // 4. Match is concluded, league table and records updated by endMatch.
+            // Allow UI to update before starting the synchronous simulation loop
+            await new Promise(resolve => setTimeout(resolve, 50)); 
+            
+            try {
+                for (let i = 0; i < upcomingFixtures.length; i++) {
+                    const fixture = upcomingFixtures[i];
+                    
+                    // 1. Setup the match state, passing 'true' to suppress navigation
+                    setupLeagueMatch(fixture, true); 
+                    
+                    // 2. Force toss/decision
+                    performToss(); 
+                    if (!gameState.tossDecision) { 
+                        userChooseBat();
+                    }
+
+                    // 3. Run synchronous match simulation
+                    simulateSingleMatch(fixture); 
+                    
+                    // 4. Update progress UI
+                    matchesCompleted++;
+                    if (progressDisplay && totalMatches > 0) {
+                        const percentage = Math.round((matchesCompleted / totalMatches) * 100);
+                        progressDisplay.textContent = `${percentage}% completed. (${matchesCompleted} / ${totalMatches} matches)`;
                     }
                     
-                    alert(`${totalMatches} matches simulated. Tournament complete! The league table is final.`);
-                    
-                } catch (e) {
-                    console.error("Tournament simulation failed:", e);
-                    alert("An error occurred during tournament simulation. Check console.");
-                } finally {
-                    gameState.isSimulatingTournament = false;
-                    gameState.isSimulating = false;
-                    // Reset match state variables cleanly and navigate back to league home
-                    resetMatchState(false); 
+                    // 5. Yield control briefly to the browser to ensure the update renders
+                    await new Promise(resolve => setTimeout(resolve, 0)); 
                 }
-            }, 50); // Small delay for UI refresh
+                
+                alert(`${totalMatches} matches simulated. Tournament complete! The league table is final.`);
+                
+            } catch (e) {
+                console.error("Tournament simulation failed:", e);
+                alert("An error occurred during tournament simulation. Check console.");
+            } finally {
+                gameState.isSimulatingTournament = false;
+                gameState.isSimulating = false;
+                // Reset match state variables cleanly and navigate back to league home
+                resetMatchState(false); 
+            }
         };
 
         // --- SIMULATION CONTROL ---
@@ -4124,5 +4136,5 @@ ${input}`;
     </script>
 </body>
 </html>
-------------------------
-show simulation progress while full league simulation.
+-------------------------------------------
+just like full league simulation, let the user simulate a chosen number of exhibition matches.
