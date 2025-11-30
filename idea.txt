@@ -1220,7 +1220,7 @@ Player Name Y (Batter)
                         <div class="p-4 bg-gray-100 rounded-lg shadow-inner border border-gray-200">
                             <h4 class="text-lg font-bold mb-3 text-gray-700">Exhibition Series Simulation</h4>
                             <div class="flex space-x-2">
-                                <input type="number" id="num-exhibition-matches" value="5" min="1" max="100" class="p-2 border rounded-lg w-20 text-center flex-shrink-0" oninput="document.getElementById('sim-match-count').textContent = this.value">
+                                <input type="number" id="num-exhibition-matches" value="5" min="1" class="p-2 border rounded-lg w-20 text-center flex-shrink-0" oninput="document.getElementById('sim-match-count').textContent = this.value">
                                 <button onclick="simulateExhibitionMatches()" class="btn-primary bg-yellow-600 hover:bg-yellow-700 flex-grow text-lg">
                                     Simulate <span id="sim-match-count">5</span> Matches
                                 </button>
@@ -2901,7 +2901,6 @@ Player Name Y (Batter)
                 alert("Please enter a valid number of matches (1 or more).");
                 return;
             }
-            if (numMatches > 100) numMatches = 100;
 
             if (!confirm(`Are you sure you want to simulate a series of ${numMatches} matches between ${gameState.teams['A'].name} and ${gameState.teams['B'].name}? Career Records will be updated.`)) {
                 return;
@@ -4223,5 +4222,280 @@ ${input}`;
     </script>
 </body>
 </html>
----------------------------------
-why is it only simulating 100 matches max on wxhibition match simulation. i want to be able to put any number i want.
+--------------------------------------------
+ modal.ts injected
+ [bg:index]: Hello World
+ [bg:index]: [remote@1147385211.undefined]-[page:captions]:  Array(1)
+ Keep-alive: Sun Nov 30 2025 14:43:45 GMT+0530 (India Standard Time)
+ [bg:index]: Injected 'dist/contentScripts/page.js into page@1147385211.undefined
+ [cs:early-page]: Running on page: https://cricket-match-simulator.netlify.app/ top=true
+ [cs:early-page]: Assigned globalThis.twoseven
+ cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation
+overrideMethod @ installHook.js:1
+(anonymous) @ (index):64
+(anonymous) @ (index):64
+ [bg:index]: [remote@1147385211.undefined]-[page:captions]:  Array(1)
+ [bg:index]: Injected 'dist/contentScripts/page.js into page@1147385211.undefined
+(index):1 Unchecked runtime.lastError: The message port closed before a response was received.
+ 
+logError @ index-CUHM8_N7.js:1639
+ Keep-alive: Sun Nov 30 2025 14:44:05 GMT+0530 (India Standard Time)
+applygoat.com/version-test/api/1.1/obj/userinfo?constraints=%5B%7B%22key%22%3A%22email%22%2C%22constraint_type%22%3A%22equals%22%2C%22value%22%3A%22souparnopaulreborn%40gmail.com%22%7D%5D:1  Failed to load resource: the server responded with a status of 404 ()
+ Keep-alive: Sun Nov 30 2025 14:44:25 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: South Africa. Score: 85/10
+ Keep-alive: Sun Nov 30 2025 14:44:45 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: South Africa. Score: 100/10
+ Keep-alive: Sun Nov 30 2025 14:45:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:45:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:45:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:46:05 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 2). Team: New Zealand. Score: 201/10
+ End of Innings (current game.innings: 3). Team: South Africa. Score: 144/10
+ Keep-alive: Sun Nov 30 2025 14:46:25 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 4). Team: New Zealand. Score: 47/2
+ Keep-alive: Sun Nov 30 2025 14:46:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:47:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:47:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:47:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:48:05 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: Australia. Score: 154/10
+ Keep-alive: Sun Nov 30 2025 14:48:25 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 2). Team: Sri Lanka. Score: 141/10
+ Keep-alive: Sun Nov 30 2025 14:48:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:49:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:49:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:49:45 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: Australia. Score: 206/10
+ End of Innings (current game.innings: 2). Team: Sri Lanka. Score: 209/10
+ Keep-alive: Sun Nov 30 2025 14:50:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:50:25 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 3). Team: Australia. Score: 283/10
+ End of Innings (current game.innings: 4). Team: Sri Lanka. Score: 55/10
+ Keep-alive: Sun Nov 30 2025 14:50:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:51:05 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: West Indies. Score: 268/10
+ Keep-alive: Sun Nov 30 2025 14:51:25 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 2). Team: England. Score: 342/10
+ End of Innings (current game.innings: 3). Team: West Indies. Score: 152/10
+ End of Innings (current game.innings: 4). Team: England. Score: 84/2
+ Keep-alive: Sun Nov 30 2025 14:51:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:52:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:52:25 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: England. Score: 264/10
+ End of Innings (current game.innings: 2). Team: West Indies. Score: 269/10
+ End of Innings (current game.innings: 3). Team: England. Score: 204/10
+ End of Innings (current game.innings: 4). Team: West Indies. Score: 201/9
+ Keep-alive: Sun Nov 30 2025 14:52:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:53:05 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: West Indies. Score: 140/10
+ Keep-alive: Sun Nov 30 2025 14:53:25 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 2). Team: England. Score: 200/10
+ End of Innings (current game.innings: 3). Team: West Indies. Score: 151/10
+ End of Innings (current game.innings: 4). Team: England. Score: 96/1
+ Keep-alive: Sun Nov 30 2025 14:53:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:54:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:54:25 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: West Indies. Score: 158/10
+ End of Innings (current game.innings: 2). Team: England. Score: 270/10
+ Keep-alive: Sun Nov 30 2025 14:54:45 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 3). Team: West Indies. Score: 227/10
+ End of Innings (current game.innings: 4). Team: England. Score: 120/4
+ Keep-alive: Sun Nov 30 2025 14:55:05 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: West Indies. Score: 152/10
+ Keep-alive: Sun Nov 30 2025 14:55:25 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 2). Team: England. Score: 216/10
+ End of Innings (current game.innings: 3). Team: West Indies. Score: 147/10
+ End of Innings (current game.innings: 4). Team: England. Score: 84/1
+ Keep-alive: Sun Nov 30 2025 14:55:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:56:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:56:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:56:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:57:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:57:25 GMT+0530 (India Standard Time)
+ [bg:index]: [remote@1147385281.undefined]-[page:captions]:  Array(1)
+ [bg:index]: Injected 'dist/contentScripts/page.js into page@1147385281.undefined
+ [bg:index]: [remote@1147385281.11]-[cs:media-finder:mediaElement]:  Array(2)
+ Keep-alive: Sun Nov 30 2025 14:57:46 GMT+0530 (India Standard Time)
+ [bg:index]: Injected 'dist/contentScripts/page.js into page@1147385281.11
+ [bg:index]: [remote@1147385281.12]-[page:captions]:  Array(1)
+ [bg:index]: Injected 'dist/contentScripts/page.js into page@1147385281.12
+ [bg:index]: [remote@1147385281.13]-[page:captions]:  Array(1)
+ [bg:index]: Injected 'dist/contentScripts/page.js into page@1147385281.13
+Unchecked runtime.lastError: The page keeping the extension port is moved into back/forward cache, so the message channel is closed.
+Unchecked runtime.lastError: The page keeping the extension port is moved into back/forward cache, so the message channel is closed.
+Unchecked runtime.lastError: The page keeping the extension port is moved into back/forward cache, so the message channel is closed.
+Unchecked runtime.lastError: The page keeping the extension port is moved into back/forward cache, so the message channel is closed.
+Unchecked runtime.lastError: The page keeping the extension port is moved into back/forward cache, so the message channel is closed.
+Unchecked runtime.lastError: The page keeping the extension port is moved into back/forward cache, so the message channel is closed.
+Unchecked runtime.lastError: The page keeping the extension port is moved into back/forward cache, so the message channel is closed.
+Unchecked runtime.lastError: The page keeping the extension port is moved into back/forward cache, so the message channel is closed.
+ [bg:index]: [remote@1147385281.undefined]-[page:captions]:  Array(1)
+ [bg:index]: Injected 'dist/contentScripts/page.js into page@1147385281.undefined
+ [bg:index]: [remote@1147385281.undefined]-[page:captions]:  Array(1)
+ [bg:index]: [remote@1147385281.17]-[page:captions]:  Array(1)
+ [bg:index]: Injected 'dist/contentScripts/page.js into page@1147385281.undefined
+ [bg:index]: [remote@1147385281.18]-[cs:media-finder:mediaElement]:  Array(2)
+ [bg:index]: Injected 'dist/contentScripts/page.js into page@1147385281.17
+ [bg:index]: Injected 'dist/contentScripts/page.js into page@1147385281.18
+ Keep-alive: Sun Nov 30 2025 14:58:06 GMT+0530 (India Standard Time)
+ [bg:index]: [remote@1147385281.20]-[page:captions]:  Array(1)
+ [bg:index]: Injected 'dist/contentScripts/page.js into page@1147385281.20
+ [bg:index]: [remote@1147385281.undefined]-[page:captions]:  Array(1)
+ [bg:index]: Injected 'dist/contentScripts/page.js into page@1147385281.undefined
+ Keep-alive: Sun Nov 30 2025 14:58:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:58:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:59:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:59:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 14:59:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:00:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:00:25 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: India. Score: 390/10
+ End of Innings (current game.innings: 2). Team: Pakistan. Score: 248/10
+ Keep-alive: Sun Nov 30 2025 15:00:45 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: India. Score: 294/10
+ Keep-alive: Sun Nov 30 2025 15:01:05 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 2). Team: Pakistan. Score: 105/10
+ Keep-alive: Sun Nov 30 2025 15:01:25 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: India. Score: 264/10
+ End of Innings (current game.innings: 2). Team: Pakistan. Score: 69/10
+ Keep-alive: Sun Nov 30 2025 15:01:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:02:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:02:25 GMT+0530 (India Standard Time)
+ End of Innings (current game.innings: 1). Team: Pakistan. Score: 154/10
+ Keep-alive: Sun Nov 30 2025 15:02:45 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 2). Team: India. Score: 384/10
+(index):2260 End of Innings (current game.innings: 3). Team: Pakistan. Score: 261/10
+(index):2260 End of Innings (current game.innings: 4). Team: India. Score: 36/3
+ Keep-alive: Sun Nov 30 2025 15:03:05 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 1). Team: India. Score: 222/10
+(index):2260 End of Innings (current game.innings: 2). Team: Pakistan. Score: 94/10
+ Keep-alive: Sun Nov 30 2025 15:03:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:03:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:04:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:04:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:04:45 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 1). Team: Pakistan. Score: 189/10
+ Keep-alive: Sun Nov 30 2025 15:05:05 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 2). Team: India. Score: 354/10
+(index):2260 End of Innings (current game.innings: 3). Team: Pakistan. Score: 135/10
+ Keep-alive: Sun Nov 30 2025 15:05:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:05:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:06:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:06:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:06:45 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 1). Team: Pakistan. Score: 270/10
+(index):2260 End of Innings (current game.innings: 2). Team: India. Score: 258/10
+ Keep-alive: Sun Nov 30 2025 15:07:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:07:25 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 1). Team: India. Score: 444/10
+(index):2260 End of Innings (current game.innings: 2). Team: Pakistan. Score: 258/10
+ Keep-alive: Sun Nov 30 2025 15:07:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:08:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:08:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:08:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:09:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:09:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:09:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:10:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:10:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:10:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:11:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:11:25 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 1). Team: India. Score: 432/10
+ Keep-alive: Sun Nov 30 2025 15:11:45 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 2). Team: Pakistan. Score: 172/10
+ Keep-alive: Sun Nov 30 2025 15:12:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:12:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:12:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:13:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:13:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:13:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:14:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:14:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:14:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:15:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:15:25 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 1). Team: Sri Lanka. Score: 216/10
+(index):2260 End of Innings (current game.innings: 2). Team: West Indies. Score: 156/10
+ Keep-alive: Sun Nov 30 2025 15:15:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:16:05 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 1). Team: Sri Lanka. Score: 336/10
+(index):2260 End of Innings (current game.innings: 2). Team: West Indies. Score: 164/10
+ Keep-alive: Sun Nov 30 2025 15:16:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:16:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:17:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:17:25 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:17:45 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:18:05 GMT+0530 (India Standard Time)
+ Keep-alive: Sun Nov 30 2025 15:18:25 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:18:45 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:19:05 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:19:25 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:19:45 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:20:05 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:20:25 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:20:45 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:21:05 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:21:25 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 1). Team: Chennai Super Kings. Score: 73/10
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:21:45 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:22:05 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:22:25 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:22:45 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 1). Team: Mumbai Indians. Score: 360/10
+(index):2260 End of Innings (current game.innings: 2). Team: Chennai Super Kings. Score: 162/10
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:23:05 GMT+0530 (India Standard Time)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:23:25 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 1). Team: Royal Challengers Bangalore. Score: 275/10
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:23:45 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:24:05 GMT+0530 (India Standard Time)
+(index):2260 End of Innings (current game.innings: 2). Team: Mumbai Indians. Score: 276/8
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+(index):1 Uncaught ReferenceError: startNextLeagueMatch is not defined
+    at HTMLButtonElement.onclick ((index):1:1)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:24:25 GMT+0530 (India Standard Time)
+index.mjs:2377 Keep-alive: Sun Nov 30 2025 15:24:48 GMT+0530 (India Standard Time)
+
+------------------------------
+fix these.

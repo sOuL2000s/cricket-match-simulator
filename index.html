@@ -2289,6 +2289,30 @@ Player Name Y (Batter)
             }
         };
 
+// Insert this entire function block after the endMatch function (around line 2280):
+
+        /** NEW: Advances the league to the next upcoming fixture. */
+        const startNextLeagueMatch = () => {
+            if (gameState.currentMode !== 'league' || !leagueState.isActive) {
+                resetMatchState(true);
+                return;
+            }
+            
+            // Find the index of the first upcoming match
+            const nextMatchIndex = leagueState.fixtures.findIndex(f => f.status === 'upcoming');
+
+            if (nextMatchIndex !== -1) {
+                const nextFixture = leagueState.fixtures[nextMatchIndex];
+                // setupLeagueMatch will update leagueState.currentMatchIndex and set status to 'live'
+                setupLeagueMatch(nextFixture, false); 
+                navigateTo('toss');
+            } else {
+                // League season is complete
+                alert(`${leagueState.leagueName} season matches are complete! Check the standings.`);
+                navigateTo('league_home');
+            }
+        };
+
         const handleLimitedOversInningsEnd = () => {
             if (gameState.innings === 2) {
                 endMatch();
