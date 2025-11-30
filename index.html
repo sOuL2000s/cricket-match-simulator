@@ -642,25 +642,27 @@ Player Name Y (Batter)
         const ballsToOversDecimal = (totalBalls) => Math.floor(totalBalls / 6) + (totalBalls % 6) / 6;
 
 
-        /** Generates round-robin fixtures (8 teams, home and away). N * (N-1) matches */
-        const generateLeagueFixtures = (teamKeys) => {
+        /** Generates round-robin fixtures (N teams, home and away) based on multiplier. N * (N-1) * multiplier matches */
+        const generateLeagueFixtures = (teamKeys, multiplier = 1) => {
             if (!teamKeys || teamKeys.length < 2) return [];
             const teams = teamKeys;
             const fixtures = [];
             let matchIdCounter = 1;
 
-            for (let i = 0; i < teams.length; i++) {
-                for (let j = 0; j < teams.length; j++) {
-                    if (i !== j) {
-                        // Match (Home: teams[i], Away: teams[j])
-                        fixtures.push({
-                            id: matchIdCounter++,
-                            home: teams[i],
-                            away: teams[j],
-                            status: 'upcoming', // 'upcoming', 'live', 'completed'
-                            result: null,
-                            winnerKey: null,
-                        });
+            for (let k = 0; k < multiplier; k++) { // NEW: Outer loop for multiplier
+                for (let i = 0; i < teams.length; i++) {
+                    for (let j = 0; j < teams.length; j++) {
+                        if (i !== j) {
+                            // Match (Home: teams[i], Away: teams[j])
+                            fixtures.push({
+                                id: matchIdCounter++,
+                                home: teams[i],
+                                away: teams[j],
+                                status: 'upcoming', // 'upcoming', 'live', 'completed'
+                                result: null,
+                                winnerKey: null,
+                            });
+                        }
                     }
                 }
             }
@@ -698,8 +700,9 @@ Player Name Y (Batter)
                 leagueName: leagueNameMap[leagueId] || 'Custom League',
                 leagueFormat: 'limited_overs', // limited_overs or test_match
                 oversPerMatch: 20,
+                matchMultiplier: 1, // <--- ADD THIS LINE
                 teams: teamKeys, // Array of team keys (e.g., 'India', 'Australia')
-                fixtures: generateLeagueFixtures(teamKeys),
+                fixtures: generateLeagueFixtures(teamKeys, 1), // <--- UPDATE ARGUMENT TO 1
                 currentMatchIndex: -1, 
                 table: initializeLeagueTable(teamKeys),
                 records: { 
@@ -1298,9 +1301,39 @@ Player Name Y (Batter)
             leagueState.isActive = true;
             leagueState.leagueFormat = gameState.gameMode;
             leagueState.oversPerMatch = gameState.oversPerInnings;
+                // Reset/Setup league using current global game settings (multiplier=1 default)
+                const teamKeys = allLeagueStates[leagueId].teams;
+                setupLeagueSeason(leagueId, 1, gameState.oversPerInnings, gameState.gameMode, true); // Use 1 as default multiplier
 
             saveState();
             navigateTo('league_home');
+        };
+
+        /** Sets up or resets the league season with new parameters (multiplier, overs, format). */
+        const setupLeagueSeason = (leagueId, multiplier, overs, format, forceReset = false) => {
+            let league = allLeagueStates[leagueId];
+            const teamKeys = league.teams;
+
+            if (!league.isActive || forceReset) {
+                // Resetting the season
+                league = getInitialLeagueState(leagueId, teamKeys);
+                allLeagueStates[leagueId] = league;
+            }
+            
+            // Apply new settings
+            league.leagueFormat = format;
+            league.oversPerMatch = overs;
+            league.matchMultiplier = multiplier;
+            league.isActive = true; 
+            
+            // Regenerate fixtures based on new multiplier
+            league.fixtures = generateLeagueFixtures(teamKeys, multiplier);
+
+            leagueState = league; // Update the reference to the active state
+            
+            saveState();
+            renderScreen();
+            return league;
         };
 
         /** Quits the current active league, resets state, and navigates to the start menu. */
@@ -1797,6 +1830,10 @@ Player Name Y (Batter)
             };
 
 
+            const totalMatches = leagueState.fixtures.length; // <--- ADD THIS LINE
+            const matchesPlayed = totalMatches - (leagueState.fixtures.filter(f => f.status === 'upcoming' || f.status === 'live').length); // <--- ADD THIS LINE (Fixes calculation for UI)
+
+
             const buttonsHtml = currentFixture ? `
                 <button onclick="setupLeagueMatch(leagueState.fixtures[${currentFixtureIndex}])" class="btn-primary w-full text-xl mb-4">
                     ${currentFixture.status === 'live' ? 'Resume Current Match: ' : 'Play Next Match: '}
@@ -1817,11 +1854,44 @@ Player Name Y (Batter)
             return `
                 <div class="max-w-6xl mx-auto">
                     <h2 class="text-4xl font-extrabold text-center mb-4 ${headerColor}">${leagueState.leagueName}</h2>
-                    <p class="text-center text-xl mb-8 text-gray-700">Format: ${leagueFormatDisplay} | Matches Remaining: ${leagueState.fixtures.filter(f => f.status === 'upcoming' || f.status === 'live').length}</p>
+                    <p class="text-center text-xl mb-8 text-gray-700">Format: ${leagueFormatDisplay} | Total Matches: ${totalMatches} | Matches Remaining: ${leagueState.fixtures.filter(f => f.status === 'upcoming' || f.status === 'live').length}</p>
 
                     ${buttonsHtml}
                     
                     ${renderTable()}
+
+                    <!-- NEW LEAGUE SETUP/RESET SECTION -->
+                    <div class="card p-6 bg-white mt-8">
+                        <h3 class="text-xl font-bold mb-4 text-cricket-red border-b pb-2">Season Setup & Reset</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                            <div>
+                                <label for="league-multiplier" class="font-semibold text-gray-700">Matches per Opponent (Multiplier):</label>
+                                <input type="number" id="league-multiplier" value="${leagueState.matchMultiplier}" min="1" max="10" class="p-2 border rounded-md shadow-sm w-full mt-1">
+                                <p class="text-xs text-gray-500 mt-1">1x = ${leagueState.teams.length * (leagueState.teams.length - 1)} matches total.</p>
+                            </div>
+                            <div>
+                                <label for="league-overs" class="font-semibold text-gray-700">Overs per Match:</label>
+                                <select id="league-overs" class="p-2 border rounded-md shadow-sm w-full mt-1">
+                                    ${LIMITED_OVERS_OPTIONS.map(overs => `
+                                        <option value="${overs}" ${leagueState.oversPerMatch == overs ? 'selected' : ''}>${overs} Overs</option>
+                                    `).join('')}
+                                    <option value="${TEST_MATCH_OVERS}" ${leagueState.leagueFormat === 'test_match' ? 'selected' : ''}>Test Match (${TEST_MATCH_OVERS} O)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <button onclick="
+                                    const multiplier = parseInt(document.getElementById('league-multiplier').value) || 1;
+                                    const overs = parseInt(document.getElementById('league-overs').value);
+                                    const format = overs === ${TEST_MATCH_OVERS} ? 'test_match' : 'limited_overs';
+                                    setupLeagueSeason('${leagueState.id}', multiplier, overs, format, true);
+                                    " class="btn-primary bg-cricket-red hover:bg-red-700 w-full">
+                                    Reset Season with New Settings
+                                </button>
+                            </div>
+                        </div>
+                        <p class="text-sm text-gray-500 mt-3">Current Total Matches: ${totalMatches}. Played: ${matchesPlayed}. Note: Resetting deletes all current season data.</p>
+                    </div>
+                    <!-- END NEW LEAGUE SETUP/RESET SECTION -->
 
                     <div class="mt-8">
                         ${renderFixtures()}
@@ -4210,6 +4280,22 @@ ${input}`;
                 }
             }
         }
+
+        /** Handles gathering inputs from league home and resetting the season. */
+        const handleLeagueSeasonReset = (leagueId) => {
+            const multiplierInput = document.getElementById('league-multiplier');
+            const oversInput = document.getElementById('league-overs');
+
+            if (!multiplierInput || !oversInput) return;
+
+            const multiplier = parseInt(multiplierInput.value, 10) || 1;
+            const overs = parseInt(oversInput.value, 10);
+            const format = (overs === TEST_MATCH_OVERS) ? 'test_match' : 'limited_overs';
+
+            if (confirm(`Are you sure you want to reset the ${leagueState.leagueName} season? All current league progress will be lost. New format: ${format} (${overs} overs), ${multiplier}x matches.`)) {
+                setupLeagueSeason(leagueId, multiplier, overs, format, true);
+            }
+        };
 
         // --- INITIALIZATION ---
 
